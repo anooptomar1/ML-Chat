@@ -73,63 +73,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
   Text input = new Text('');
   bool _isComposing = false;
 
-  /*
   @override
-  Widget build(BuildContext context) {
-    return new Scaffold(
-        appBar: new AppBar(
-          title: new Text("ML Chat"),
-          elevation:
-              Theme.of(context).platform == TargetPlatform.iOS ? 0.0 : 4.0,
-        ),
-        body: new Column(children: <Widget>[
-          new Flexible(
-            child: new FutureBuilder(
-              future: _ensureLoggedIn(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return new FirebaseAnimatedList(
-                    query: _dataReference,
-                    sort: (a, b) => b.key.compareTo(a.key),
-                    padding: new EdgeInsets.all(8.0),
-                    reverse: true,
-                    itemBuilder: (_, DataSnapshot snapshot,
-                        Animation<double> animation, someInt) {
-                      return new Message(
-                          snapshot: snapshot, animation: animation);
-                    },
-                  );
-                } else {
-                  return new Expanded(child: new Text('loading messages'));
-                }
-              },
-            ),
-          ),
-          new Divider(height: 1.0),
-          new Container(
-            decoration: new BoxDecoration(color: Theme.of(context).cardColor),
-            child: _buildTextEntry(),
-          ),
-          new Divider(height: 1.0),
-          new Container(
-            height: 200.0, // TODO: put ml picker here
-            decoration: new BoxDecoration(color: Theme.of(context).cardColor),
-            child: new Center(
-                child: new RaisedButton(
-                    child: new Text('\$'),
-                    onPressed: (() {
-                      setState(() {
-                        input = new Text('${input.data}\$');
-                        _isComposing =
-                            true; // TODO: remove this default behaviour
-                      });
-                      _analytics.logEvent(name: 'placeholder_button_push');
-                    }))),
-          )
-        ]));
-  }
-  */
-
   Widget build(BuildContext context) {
     return new FutureBuilder(
         future: _ensureLoggedIn(),
