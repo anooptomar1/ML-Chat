@@ -159,13 +159,18 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _handleSubmitted(String text) {
+  void _handleSubmitted(String messageText) async {
     setState(() {
       input = new Text('');
       _isComposing = false;
     });
+    await _ensureLoggedIn();
+    _sendMessage(messageText);
+  }
+
+  void _sendMessage(String messageText) {
     Message message = new Message(
-      text: text,
+      text: messageText,
       animationController: new AnimationController(
         duration: new Duration(milliseconds: 400),
         vsync: this,
