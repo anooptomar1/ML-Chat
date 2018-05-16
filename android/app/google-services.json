@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "911200891033-4rfl1ndrmar1masott6jpesk6hgpsvrs.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rowlindsay.mlchat",
+            "certificate_hash": "3b4321167022613b4137bbde840f823db49e2468"
+          }
+        },
+        {
           "client_id": "911200891033-evb0jvm71lu93nh3d85oq5iu6fqf4a1a.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,8 +37,20 @@
           "status": 1
         },
         "appinvite_service": {
-          "status": 1,
-          "other_platform_oauth_client": []
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "911200891033-pmnvll18vf4if0mog4fghhs42fm75cen.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.rowlindsay.mlChat"
+              }
+            },
+            {
+              "client_id": "911200891033-evb0jvm71lu93nh3d85oq5iu6fqf4a1a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         },
         "ads_service": {
           "status": 2
