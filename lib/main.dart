@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 // TODO: firebase for messages
 
 final ThemeData kIOSTheme = new ThemeData(
@@ -15,7 +21,19 @@ final ThemeData kDefaultTheme = new ThemeData(
   accentColor: Colors.greenAccent[400],
 );
 
-const String _name = "Your Name";
+
+final FirebaseAuth _auth = FirebaseAuth.instance;
+final GoogleSignIn _googleSignIn = new GoogleSignIn();
+
+Future<Null> _ensureLoggedIn() async {
+  GoogleSignInAccount user = _googleSignIn.currentUser;
+  if (user == null)
+    user = await _googleSignIn.signInSilently();
+  if (user == null)
+    await _googleSignIn.signIn();
+}
+
+const String _name = "Rowan";
 
 void main() {
   runApp(new ChatApp());
@@ -29,12 +47,36 @@ class ChatApp extends StatelessWidget {
       theme: defaultTargetPlatform == TargetPlatform.iOS
           ? kIOSTheme
           : kDefaultTheme,
-      home: new ChatScreen(),
+      home: new LoginScreen(),
+      routes: <String, WidgetBuilder> {
+        'login': (BuildContext context) => new LoginScreen(),
+        'chat': (BuildContext context) => new ChatScreen(),
+      }
+    );
+  }
+}
+
+class LoginScreen extends StatefulWidget {
+  @override
+  State createState() => new LoginState();
+}
+
+class LoginState extends State<LoginScreen> {
+
+  @override
+  Widget build(BuildContext context) {
+    return new Scaffold(
+      body: new Center(
+        child: new RaisedButton(onPressed: (() {
+          Navigator.of(context).pushNamed('chat');
+        }))
+      )
     );
   }
 }
 
 class ChatScreen extends StatefulWidget {
+
   @override
   State createState() => new ChatState();
 }
