@@ -126,25 +126,54 @@ class ChatState extends State<ChatScreen> {
                   child: _buildTextEntry(),
                 ),
                 new Divider(height: 1.0),
-                new Container(
-                  height: 200.0, // TODO: put ml picker here
-                  decoration:
-                      new BoxDecoration(color: Theme.of(context).cardColor),
-                  child: new Center(
-                      child: new RaisedButton(
-                          child: new Text('\$'),
-                          onPressed: (() {
-                            setState(() {
-                              input = new Text('${input.data}\$');
-                              _isComposing =
-                                  true; // TODO: remove this default behaviour
-                            });
-                            _analytics.logEvent(
-                                name: 'placeholder_button_push');
-                          }))),
-                )
+                new DefaultTabController(
+                    length: 2,
+                    child: new Container(
+                        height: 200.0,
+                        decoration: new BoxDecoration(
+                            color: Theme.of(context).cardColor),
+                        child: new Column(
+                          children: <Widget>[
+                            new Expanded(
+                                child: new TabBarView(children: [
+                              _buildMLButton(
+                                  type: 'object',
+                                  platform: Theme.of(context).platform),
+                              _buildMLButton(
+                                  type: 'text',
+                                  platform: Theme.of(context).platform)
+                            ]))
+                          ],
+                        ))),
               ]));
         });
+  }
+
+  Widget _buildMLButton({type, platform}) {
+    Icon icon =
+        type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
+    Text label = type == 'object'
+        ? new Text('Find an Object')
+        : new Text('Find Some Text');
+    Widget buttonBody = new Center(
+        child: new Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        new Padding(padding: new EdgeInsets.all(10.0), child: icon),
+        label
+      ],
+    ));
+    var onPress = (() {
+      setState(() {
+        input = new Text('${input.data}\$');
+        _isComposing = true; // TODO: remove this default behaviour
+      });
+      _analytics.logEvent(name: 'placeholder_button_push');
+    });
+
+    return platform == TargetPlatform.iOS
+        ? new CupertinoButton(child: buttonBody, onPressed: onPress)
+        : new RaisedButton(child: buttonBody, onPressed: onPress);
   }
 
   Widget _buildTextEntry() {
@@ -209,11 +238,6 @@ class Message extends StatelessWidget {
       sizeFactor: new CurvedAnimation(parent: animation, curve: Curves.easeOut),
       axisAlignment: 0.0,
       child: new Container(
-        decoration: new BoxDecoration(
-            color: _sentByThis()
-                ? Theme.of(context).primaryColor
-                : Theme.of(context).accentColor,
-            borderRadius: new BorderRadius.circular(10.0)),
         margin: const EdgeInsets.symmetric(vertical: 10.0),
         child: new Padding(
             padding: EdgeInsets.all(5.0),
@@ -240,19 +264,34 @@ class Message extends StatelessWidget {
                     ),
                   ),
                   new Expanded(
-                    child: new Column(
-                      crossAxisAlignment: _sentByThis()
-                          ? CrossAxisAlignment.start
-                          : CrossAxisAlignment.end,
-                      children: <Widget>[
-                        new Text(snapshot.value['senderName'],
-                            style: Theme.of(context).textTheme.title),
-                        new Container(
-                          margin: const EdgeInsets.only(top: 5.0),
-                          child: new Text(snapshot.value['text']),
-                        ),
-                      ],
-                    ),
+                    child: new Container(
+                        decoration: new BoxDecoration(
+                            color: _sentByThis()
+                                ? Theme.of(context).primaryColor
+                                : Theme.of(context).accentColor,
+                            borderRadius: new BorderRadius.circular(10.0)),
+                        child: new Padding(
+                            padding: new EdgeInsets.all(5.0),
+                            child: new Column(
+                              crossAxisAlignment: _sentByThis()
+                                  ? CrossAxisAlignment.start
+                                  : CrossAxisAlignment.end,
+                              children: <Widget>[
+                                new Text(
+                                  snapshot.value['text'],
+                                  style: _getMessageStyle(context),
+                                ),
+                                /* Sender Name Label
+                                new Container(
+                                  margin: const EdgeInsets.only(top: 5.0),
+                                  child: new Text(
+                                    snapshot.value['senderName'],
+                                    style: _getMessageStyle(context),
+                                  ),
+                                )
+                                */
+                              ],
+                            ))),
                   ),
                 ])),
       ),
@@ -262,6 +301,17 @@ class Message extends StatelessWidget {
   bool _sentByThis() {
     if (_currentUser == null) return false;
     return snapshot.value['senderName'] == _currentUser.name;
+  }
+
+  TextStyle _getMessageStyle(BuildContext context) {
+    //white on dark or black on light
+    if (((Theme.of(context).platform == TargetPlatform.android) &&
+            _sentByThis()) ||
+        ((Theme.of(context).platform == TargetPlatform.iOS) &&
+            !_sentByThis())) {
+      return new TextStyle(color: Colors.white);
+    }
+    return null;
   }
 }
 
