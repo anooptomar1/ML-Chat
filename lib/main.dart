@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 
@@ -22,6 +23,7 @@ final ThemeData kDefaultTheme = new ThemeData(
 );
 
 final _googleSignIn = new GoogleSignIn();
+final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
 
 Future<Null> _ensureLoggedIn() async {
@@ -30,6 +32,15 @@ Future<Null> _ensureLoggedIn() async {
     user = await _googleSignIn.signInSilently();
   if (user == null)
     await _googleSignIn.signIn();
+
+  if (await _auth.currentUser() == null) {
+    GoogleSignInAuthentication credentials =
+    await _googleSignIn.currentUser.authentication;
+    await _auth.signInWithGoogle(
+      idToken: credentials.idToken,
+      accessToken: credentials.accessToken,
+    );
+  }
 }
 
 void main() {
