@@ -21,8 +21,6 @@ final ThemeData kDefaultTheme = new ThemeData(
   accentColor: Colors.greenAccent[400],
 );
 
-
-final FirebaseAuth _auth = FirebaseAuth.instance;
 final GoogleSignIn _googleSignIn = new GoogleSignIn();
 
 Future<Null> _ensureLoggedIn() async {
@@ -32,8 +30,6 @@ Future<Null> _ensureLoggedIn() async {
   if (user == null)
     await _googleSignIn.signIn();
 }
-
-const String _name = "Rowan";
 
 void main() {
   runApp(new ChatApp());
@@ -47,30 +43,10 @@ class ChatApp extends StatelessWidget {
       theme: defaultTargetPlatform == TargetPlatform.iOS
           ? kIOSTheme
           : kDefaultTheme,
-      home: new LoginScreen(),
+      home: new ChatScreen(),
       routes: <String, WidgetBuilder> {
-        'login': (BuildContext context) => new LoginScreen(),
         'chat': (BuildContext context) => new ChatScreen(),
       }
-    );
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  @override
-  State createState() => new LoginState();
-}
-
-class LoginState extends State<LoginScreen> {
-
-  @override
-  Widget build(BuildContext context) {
-    return new Scaffold(
-      body: new Center(
-        child: new RaisedButton(onPressed: (() {
-          Navigator.of(context).pushNamed('chat');
-        }))
-      )
     );
   }
 }
@@ -115,6 +91,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
             decoration: new BoxDecoration(color: Theme.of(context).cardColor),
             child: new Center(
                 child: new RaisedButton(
+                    child: new Text('\$'),
                     onPressed: ((){
                       setState(() {
                         input = new Text('${input.data}\$');
@@ -191,6 +168,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
 }
 
 class Message extends StatelessWidget {
+
   Message({this.text, this.animationController});
   final String text;
   final AnimationController animationController;
@@ -207,13 +185,14 @@ class Message extends StatelessWidget {
           children: <Widget>[
             new Container(
               margin: const EdgeInsets.only(right: 16.0),
-              child: new CircleAvatar(child: new Text(_name[0])),
+              child: new CircleAvatar(child: new Text(_googleSignIn.currentUser.displayName[0])),
+              //child: new CircleAvatar(child: new Text(_name[0])),
             ),
             new Expanded(
               child: new Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  new Text(_name, style: Theme.of(context).textTheme.subhead),
+                  new Text(_googleSignIn.currentUser.displayName, style: Theme.of(context).textTheme.subhead),
                   new Container(
                     margin: const EdgeInsets.only(top: 5.0),
                     child: new Text(text),
