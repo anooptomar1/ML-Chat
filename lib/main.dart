@@ -67,7 +67,6 @@ class ChatScreen extends StatefulWidget {
 }
 
 class ChatState extends State<ChatScreen> {
-
   Text input = new Text('');
   bool _isComposing = false;
 
@@ -179,7 +178,6 @@ class ChatState extends State<ChatScreen> {
 }
 
 class Message extends StatelessWidget {
-
   Message({this.snapshot, this.animation});
   final DataSnapshot snapshot;
   final Animation animation;
@@ -189,56 +187,48 @@ class Message extends StatelessWidget {
       sizeFactor: new CurvedAnimation(parent: animation, curve: Curves.easeOut),
       axisAlignment: 0.0,
       child: new Container(
-        margin: const EdgeInsets.symmetric(vertical: 10.0),
-        child: new Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _sentByThis() //condition to put messages on the right/left
-              // ! in front if this user's messages on right
-              ? <Widget>[
-                  new Container(
-                    margin: const EdgeInsets.only(right: 16.0),
-                    child: new CircleAvatar(
-                        backgroundImage:
-                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
-                    //child: new CircleAvatar(child: new Text(_name[0])),
-                  ),
-                  new Expanded(
-                    child: new Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        new Text(snapshot.value['senderName'],
-                            style: Theme.of(context).textTheme.subhead),
-                        new Container(
-                          margin: const EdgeInsets.only(top: 5.0),
-                          child: new Text(snapshot.value['text']),
-                        ),
-                      ],
-                    ),
-                  ),
-                ]
-              : <Widget>[
-                  new Expanded(
-                    child: new Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: <Widget>[
-                        new Text(snapshot.value['senderName'],
-                            style: Theme.of(context).textTheme.subhead),
-                        new Container(
-                          margin: const EdgeInsets.only(top: 5.0),
-                          child: new Text(snapshot.value['text']),
-                        ),
-                      ],
-                    ),
-                  ),
-                  new Container(
-                    margin: const EdgeInsets.only(left: 16.0),
-                    child: new CircleAvatar(
-                        backgroundImage:
-                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
-                    //child: new CircleAvatar(child: new Text(_name[0])),
-                  ),
-                ],
+        decoration: new BoxDecoration(
+          color: _sentByThis()
+              ? Theme.of(context).primaryColor
+              : Colors.grey,
+          borderRadius: new BorderRadius.circular(10.0)
         ),
+        margin: const EdgeInsets.symmetric(vertical: 10.0),
+        child: new Padding(
+            padding: EdgeInsets.all(5.0),
+            child: new Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                textDirection:
+                    _sentByThis() ? TextDirection.ltr : TextDirection.rtl,
+                children: <Widget>[
+                  new Container(
+                    margin: _sentByThis()
+                        ? const EdgeInsets.only(right: 16.0)
+                        : const EdgeInsets.only(left: 16.0),
+                    child: new CircleAvatar(
+                        backgroundImage:
+                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
+                    decoration: new BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: new Border.all(color: Colors.grey),
+                    ),
+                  ),
+                  new Expanded(
+                    child: new Column(
+                      crossAxisAlignment: _sentByThis()
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.end,
+                      children: <Widget>[
+                        new Text(snapshot.value['senderName'],
+                            style: Theme.of(context).textTheme.title),
+                        new Container(
+                          margin: const EdgeInsets.only(top: 5.0),
+                          child: new Text(snapshot.value['text']),
+                        ),
+                      ],
+                    ),
+                  ),
+                ])),
       ),
     );
   }
