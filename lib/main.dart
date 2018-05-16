@@ -26,20 +26,39 @@ final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
 final _dataReference = FirebaseDatabase.instance.reference().child('messages');
 
-Future<bool> _ensureLoggedIn() async {
-  GoogleSignInAccount user = _googleSignIn.currentUser;
-  if (user == null) user = await _googleSignIn.signInSilently();
-  if (user == null) await _googleSignIn.signIn();
+User _currentUser;
 
-  if (await _auth.currentUser() == null) {
-    GoogleSignInAuthentication credentials =
-        await _googleSignIn.currentUser.authentication;
-    await _auth.signInWithGoogle(
-      idToken: credentials.idToken,
-      accessToken: credentials.accessToken,
-    );
+Future<bool> _checkSignIn() async {
+  if (defaultTargetPlatform == TargetPlatform.iOS) {
+    // backup
+    // TODO: test on actual device and add actual email auth
+    if (await _auth.currentUser() == null) {
+      await _auth.signInWithEmailAndPassword(
+          email: 'rwnlnsy@gmail.com', password: 'hughmungus');
+    }
+    if (_currentUser == null) {
+      _currentUser = new User(name: 'Dumb iOS user');
+    }
+  } else {
+    GoogleSignInAccount user = _googleSignIn.currentUser;
+    if (user == null) user = await _googleSignIn.signInSilently();
+    if (user == null) await _googleSignIn.signIn();
+
+    if (await _auth.currentUser() == null) {
+      GoogleSignInAuthentication credentials =
+          await _googleSignIn.currentUser.authentication;
+      await _auth.signInWithGoogle(
+        idToken: credentials.idToken,
+        accessToken: credentials.accessToken,
+      );
+    }
+    if (_currentUser == null) {
+      _currentUser = new User(
+          name: _googleSignIn.currentUser.displayName,
+          photoUrl: _googleSignIn.currentUser.photoUrl);
+    }
   }
-  return user != null;
+  return true;
 }
 
 void main() {
@@ -73,7 +92,7 @@ class ChatState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return new FutureBuilder(
-        future: _ensureLoggedIn(),
+        future: _checkSignIn(),
         builder: (context, snapshot) {
           return new Scaffold(
               appBar: new AppBar(
@@ -96,7 +115,10 @@ class ChatState extends State<ChatScreen> {
                               snapshot: snapshot, animation: animation);
                         },
                       ))
-                    : new Expanded(child: new Text('loading messages')),
+                    : new Expanded(
+                        child: snapshot.hasError
+                            ? new Text('error signing in: ${snapshot.error}')
+                            : new Text('loading messages')),
                 new Divider(height: 1.0),
                 new Container(
                   decoration:
@@ -163,15 +185,15 @@ class ChatState extends State<ChatScreen> {
       input = new Text('');
       _isComposing = false;
     });
-    await _ensureLoggedIn();
+    await _checkSignIn();
     _sendMessage(messageText);
   }
 
   void _sendMessage(String messageText) {
     _dataReference.push().set({
       'text': messageText,
-      'senderName': _googleSignIn.currentUser.displayName,
-      'senderPhotoUrl': _googleSignIn.currentUser.photoUrl,
+      'senderName': _currentUser.name,
+      'senderPhotoUrl': _currentUser.photoUrl,
     });
     _analytics.logEvent(name: 'message_send');
   }
@@ -188,11 +210,10 @@ class Message extends StatelessWidget {
       axisAlignment: 0.0,
       child: new Container(
         decoration: new BoxDecoration(
-          color: _sentByThis()
-              ? Theme.of(context).primaryColor
-              : Colors.grey,
-          borderRadius: new BorderRadius.circular(10.0)
-        ),
+            color: _sentByThis()
+                ? Theme.of(context).primaryColor
+                : Theme.of(context).accentColor,
+            borderRadius: new BorderRadius.circular(10.0)),
         margin: const EdgeInsets.symmetric(vertical: 10.0),
         child: new Padding(
             padding: EdgeInsets.all(5.0),
@@ -206,8 +227,13 @@ class Message extends StatelessWidget {
                         ? const EdgeInsets.only(right: 16.0)
                         : const EdgeInsets.only(left: 16.0),
                     child: new CircleAvatar(
-                        backgroundImage:
-                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
+                      backgroundImage: snapshot.value['senderPhotoUrl'] != null
+                          ? new NetworkImage(snapshot.value['senderPhotoUrl'])
+                          : null,
+                      child: snapshot.value['senderPhotoUrl'] == null
+                          ? new Text((snapshot.value['senderName'])[0])
+                          : null,
+                    ),
                     decoration: new BoxDecoration(
                       shape: BoxShape.circle,
                       border: new Border.all(color: Colors.grey),
@@ -234,9 +260,14 @@ class Message extends StatelessWidget {
   }
 
   bool _sentByThis() {
-    GoogleSignInAccount user = _googleSignIn.currentUser;
-    if (user == null) return false;
-    return snapshot.value['senderName'] ==
-        _googleSignIn.currentUser.displayName;
+    if (_currentUser == null) return false;
+    return snapshot.value['senderName'] == _currentUser.name;
   }
+}
+
+class User {
+  final String name;
+  final String photoUrl;
+
+  User({this.name, this.photoUrl});
 }
