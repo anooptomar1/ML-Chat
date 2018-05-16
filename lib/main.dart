@@ -29,21 +29,20 @@ final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
 final _dataReference = FirebaseDatabase.instance.reference().child('messages');
 
-Future<Null> _ensureLoggedIn() async {
+Future<bool> _ensureLoggedIn() async {
   GoogleSignInAccount user = _googleSignIn.currentUser;
-  if (user == null)
-    user = await _googleSignIn.signInSilently();
-  if (user == null)
-    await _googleSignIn.signIn();
+  if (user == null) user = await _googleSignIn.signInSilently();
+  if (user == null) await _googleSignIn.signIn();
 
   if (await _auth.currentUser() == null) {
     GoogleSignInAuthentication credentials =
-    await _googleSignIn.currentUser.authentication;
+        await _googleSignIn.currentUser.authentication;
     await _auth.signInWithGoogle(
       idToken: credentials.idToken,
       accessToken: credentials.accessToken,
     );
   }
+  return user != null;
 }
 
 void main() {
@@ -54,54 +53,61 @@ class ChatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return new MaterialApp(
-      title: "ML Chat",
-      theme: defaultTargetPlatform == TargetPlatform.iOS
-          ? kIOSTheme
-          : kDefaultTheme,
-      home: new ChatScreen(),
-      routes: <String, WidgetBuilder> {
-        'chat': (BuildContext context) => new ChatScreen(),
-      }
-    );
+        title: "ML Chat",
+        theme: defaultTargetPlatform == TargetPlatform.iOS
+            ? kIOSTheme
+            : kDefaultTheme,
+        home: new ChatScreen(),
+        routes: <String, WidgetBuilder>{
+          'chat': (BuildContext context) => new ChatScreen(),
+        });
   }
 }
 
 class ChatScreen extends StatefulWidget {
-
   @override
   State createState() => new ChatState();
 }
 
 class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
-
   Text input = new Text('');
   bool _isComposing = false;
 
+  /*
   @override
   Widget build(BuildContext context) {
     return new Scaffold(
         appBar: new AppBar(
           title: new Text("ML Chat"),
-          elevation: Theme.of(context).platform == TargetPlatform.iOS ? 0.0 : 4.0,
+          elevation:
+              Theme.of(context).platform == TargetPlatform.iOS ? 0.0 : 4.0,
         ),
         body: new Column(children: <Widget>[
           new Flexible(
-            child: new FirebaseAnimatedList(
-              query: _dataReference,
-              sort: (a, b) => b.key.compareTo(a.key),
-              padding: new EdgeInsets.all(8.0),
-              reverse: true,
-              itemBuilder: (_, DataSnapshot snapshot, Animation<double> animation, someInt) {
-                return new Message(
-                    snapshot: snapshot,
-                    animation: animation
-                );
+            child: new FutureBuilder(
+              future: _ensureLoggedIn(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return new FirebaseAnimatedList(
+                    query: _dataReference,
+                    sort: (a, b) => b.key.compareTo(a.key),
+                    padding: new EdgeInsets.all(8.0),
+                    reverse: true,
+                    itemBuilder: (_, DataSnapshot snapshot,
+                        Animation<double> animation, someInt) {
+                      return new Message(
+                          snapshot: snapshot, animation: animation);
+                    },
+                  );
+                } else {
+                  return new Expanded(child: new Text('loading messages'));
+                }
               },
-            ),),
+            ),
+          ),
           new Divider(height: 1.0),
           new Container(
-            decoration:
-            new BoxDecoration(color: Theme.of(context).cardColor),
+            decoration: new BoxDecoration(color: Theme.of(context).cardColor),
             child: _buildTextEntry(),
           ),
           new Divider(height: 1.0),
@@ -111,16 +117,71 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
             child: new Center(
                 child: new RaisedButton(
                     child: new Text('\$'),
-                    onPressed: ((){
+                    onPressed: (() {
                       setState(() {
                         input = new Text('${input.data}\$');
-                        _isComposing = true; // TODO: remove this default behaviour
+                        _isComposing =
+                            true; // TODO: remove this default behaviour
                       });
                       _analytics.logEvent(name: 'placeholder_button_push');
-                    }))
-            ),
+                    }))),
           )
         ]));
+  }
+  */
+
+  Widget build(BuildContext context) {
+    return new FutureBuilder(
+        future: _ensureLoggedIn(),
+        builder: (context, snapshot) {
+          return new Scaffold(
+              appBar: new AppBar(
+                title: new Text("ML Chat"),
+                elevation: Theme.of(context).platform == TargetPlatform.iOS
+                    ? 0.0
+                    : 4.0,
+              ),
+              body: new Column(children: <Widget>[
+                snapshot.hasData
+                    ? new Flexible(
+                        child: new FirebaseAnimatedList(
+                        query: _dataReference,
+                        sort: (a, b) => b.key.compareTo(a.key),
+                        padding: new EdgeInsets.all(8.0),
+                        reverse: true,
+                        itemBuilder: (_, DataSnapshot snapshot,
+                            Animation<double> animation, someInt) {
+                          return new Message(
+                              snapshot: snapshot, animation: animation);
+                        },
+                      ))
+                    : new Expanded(child: new Text('loading messages')),
+                new Divider(height: 1.0),
+                new Container(
+                  decoration:
+                      new BoxDecoration(color: Theme.of(context).cardColor),
+                  child: _buildTextEntry(),
+                ),
+                new Divider(height: 1.0),
+                new Container(
+                  height: 200.0, // TODO: put ml picker here
+                  decoration:
+                      new BoxDecoration(color: Theme.of(context).cardColor),
+                  child: new Center(
+                      child: new RaisedButton(
+                          child: new Text('\$'),
+                          onPressed: (() {
+                            setState(() {
+                              input = new Text('${input.data}\$');
+                              _isComposing =
+                                  true; // TODO: remove this default behaviour
+                            });
+                            _analytics.logEvent(
+                                name: 'placeholder_button_push');
+                          }))),
+                )
+              ]));
+        });
   }
 
   Widget _buildTextEntry() {
@@ -136,22 +197,22 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
                 margin: new EdgeInsets.symmetric(horizontal: 4.0),
                 child: Theme.of(context).platform == TargetPlatform.iOS
                     ? new CupertinoButton(
-                  child: new Text("Send"),
-                  onPressed: _isComposing
-                      ? () => _handleSubmitted(input.data)
-                      : null,
-                )
+                        child: new Text("Send"),
+                        onPressed: _isComposing
+                            ? () => _handleSubmitted(input.data)
+                            : null,
+                      )
                     : new IconButton(
-                  icon: new Icon(Icons.send),
-                  onPressed: _isComposing
-                      ? () => _handleSubmitted(input.data)
-                      : null,
-                )),
+                        icon: new Icon(Icons.send),
+                        onPressed: _isComposing
+                            ? () => _handleSubmitted(input.data)
+                            : null,
+                      )),
           ]),
           decoration: Theme.of(context).platform == TargetPlatform.iOS
               ? new BoxDecoration(
-              border:
-              new Border(top: new BorderSide(color: Colors.grey[200])))
+                  border:
+                      new Border(top: new BorderSide(color: Colors.grey[200])))
               : null),
     );
   }
@@ -176,42 +237,74 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
 }
 
 class Message extends StatelessWidget {
-
   Message({this.snapshot, this.animation});
   final DataSnapshot snapshot;
   final Animation animation;
 
   Widget build(BuildContext context) {
     return new SizeTransition(
-      sizeFactor: new CurvedAnimation(
-          parent: animation, curve: Curves.easeOut),
+      sizeFactor: new CurvedAnimation(parent: animation, curve: Curves.easeOut),
       axisAlignment: 0.0,
       child: new Container(
         margin: const EdgeInsets.symmetric(vertical: 10.0),
         child: new Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            new Container(
-              margin: const EdgeInsets.only(right: 16.0),
-              child: new CircleAvatar(backgroundImage: new NetworkImage(snapshot.value['senderPhotoUrl'])),
-              //child: new CircleAvatar(child: new Text(_name[0])),
-            ),
-            new Expanded(
-              child: new Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  new Text(snapshot.value['senderName'], style: Theme.of(context).textTheme.subhead),
+          children: _sentByThis() //condition to put messages on the right/left
+              // ! in front if this user's messages on right
+              ? <Widget>[
                   new Container(
-                    margin: const EdgeInsets.only(top: 5.0),
-                    child: new Text(snapshot.value['text']),
+                    margin: const EdgeInsets.only(right: 16.0),
+                    child: new CircleAvatar(
+                        backgroundImage:
+                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
+                    //child: new CircleAvatar(child: new Text(_name[0])),
+                  ),
+                  new Expanded(
+                    child: new Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        new Text(snapshot.value['senderName'],
+                            style: Theme.of(context).textTheme.subhead),
+                        new Container(
+                          margin: const EdgeInsets.only(top: 5.0),
+                          child: new Text(snapshot.value['text']),
+                        ),
+                      ],
+                    ),
+                  ),
+                ]
+              : <Widget>[
+                  new Expanded(
+                    child: new Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        new Text(snapshot.value['senderName'],
+                            style: Theme.of(context).textTheme.subhead),
+                        new Container(
+                          margin: const EdgeInsets.only(top: 5.0),
+                          child: new Text(snapshot.value['text']),
+                        ),
+                      ],
+                    ),
+                  ),
+                  new Container(
+                    margin: const EdgeInsets.only(left: 16.0),
+                    child: new CircleAvatar(
+                        backgroundImage:
+                            new NetworkImage(snapshot.value['senderPhotoUrl'])),
+                    //child: new CircleAvatar(child: new Text(_name[0])),
                   ),
                 ],
-              ),
-            ),
-          ],
         ),
       ),
     );
   }
-}
 
+  bool _sentByThis() {
+    // TODO: fix that this only updates after call to setState
+    GoogleSignInAccount user = _googleSignIn.currentUser;
+    if (user == null) return false;
+    return snapshot.value['senderName'] ==
+        _googleSignIn.currentUser.displayName;
+  }
+}
