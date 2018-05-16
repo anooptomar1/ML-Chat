@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 // TODO: firebase for messages
 
@@ -21,7 +21,8 @@ final ThemeData kDefaultTheme = new ThemeData(
   accentColor: Colors.greenAccent[400],
 );
 
-final GoogleSignIn _googleSignIn = new GoogleSignIn();
+final _googleSignIn = new GoogleSignIn();
+final _analytics = new FirebaseAnalytics();
 
 Future<Null> _ensureLoggedIn() async {
   GoogleSignInAccount user = _googleSignIn.currentUser;
@@ -97,6 +98,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
                         input = new Text('${input.data}\$');
                         _isComposing = true; // TODO: remove this default behaviour
                       });
+                      _analytics.logEvent(name: 'placeholder_button_push');
                     }))
             ),
           )
@@ -157,6 +159,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
       _messages.insert(0, message);
     });
     message.animationController.forward();
+    _analytics.logEvent(name: 'message_send');
   }
 
   @override
