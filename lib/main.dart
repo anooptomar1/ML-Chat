@@ -4,14 +4,11 @@ import 'package:flutter/foundation.dart';
 
 import 'dart:async';
 
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database/ui/firebase_animated_list.dart';
-
-// TODO: firebase for messages
 
 final ThemeData kIOSTheme = new ThemeData(
   primarySwatch: Colors.lightBlue,
@@ -69,7 +66,8 @@ class ChatScreen extends StatefulWidget {
   State createState() => new ChatState();
 }
 
-class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
+class ChatState extends State<ChatScreen> {
+
   Text input = new Text('');
   bool _isComposing = false;
 
@@ -181,6 +179,7 @@ class ChatState extends State<ChatScreen> with TickerProviderStateMixin {
 }
 
 class Message extends StatelessWidget {
+
   Message({this.snapshot, this.animation});
   final DataSnapshot snapshot;
   final Animation animation;
@@ -245,7 +244,6 @@ class Message extends StatelessWidget {
   }
 
   bool _sentByThis() {
-    // TODO: fix that this only updates after call to setState
     GoogleSignInAccount user = _googleSignIn.currentUser;
     if (user == null) return false;
     return snapshot.value['senderName'] ==
