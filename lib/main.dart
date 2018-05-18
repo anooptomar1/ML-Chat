@@ -137,7 +137,7 @@ class ChatState extends State<ChatScreen> {
         builder: (context, snapshot) {
           return new Scaffold(
               appBar: new AppBar(
-                title: new Text('ML Chat'),
+                title: new Text(widget.conversation.name),
                 elevation: Theme.of(context).platform == TargetPlatform.iOS
                     ? 0.0
                     : 4.0,
@@ -162,8 +162,8 @@ class ChatState extends State<ChatScreen> {
                       ))
                     : new Expanded(
                         child: snapshot.hasError
-                            ? new Text('error signing in: ${snapshot.error}')
-                            : new Text('loading messages')),
+                            ? new LoadingScreen(message: 'error signing in: ${snapshot.error}')
+                            : new LoadingScreen(message: 'loading messages')),
                 new Divider(height: 1.0),
                 new Container(
                   decoration:
@@ -430,13 +430,12 @@ class ConversationsState extends State<ConversationScreen> {
                                 return snapshot.data[index];
                               })
                           : snapshot.hasError
-                              ? new Text(
-                                  'error loading conversations: ${snapshot.error}')
-                              : new Text('loading conversations');
+                              ? new LoadingScreen(message: 'error loading conversations: ${snapshot.error}')
+                              : new LoadingScreen(message: 'loading conversations');
                     })
                 : snapshot.hasError
-                    ? new Text('error signing in: ${snapshot.error}')
-                    : new Text('authenticating');
+                    ? new LoadingScreen(message: 'error signing in: ${snapshot.error}')
+                    : new LoadingScreen(message: 'authenticating');
           }),
     );
   }
@@ -517,5 +516,19 @@ class Conversation extends StatelessWidget {
     } else {
       return '';
     }
+  }
+}
+
+class LoadingScreen extends StatelessWidget {
+
+  String message;
+
+  LoadingScreen({this.message = 'Loading...'}) : super();
+
+  @override
+  Widget build(BuildContext context) {
+    return new Center(
+      child: new Text(message)
+    );
   }
 }
