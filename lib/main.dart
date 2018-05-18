@@ -24,11 +24,16 @@ final ThemeData kDefaultTheme = new ThemeData(
 final _googleSignIn = new GoogleSignIn();
 final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
-final _dataReference = FirebaseDatabase.instance.reference().child('messages');
+final _messagesRef = FirebaseDatabase.instance.reference().child('messages');
+final _usersRef = FirebaseDatabase.instance.reference().child('users');
 
 User _currentUser;
 
 Future<bool> _checkSignIn() async {
+  String name, email, photoUrl, userKey;
+
+  // CHECK SIGN_IN
+
   if (defaultTargetPlatform == TargetPlatform.iOS) {
     // backup
     // TODO: test on actual device and add actual email auth
@@ -36,9 +41,10 @@ Future<bool> _checkSignIn() async {
       await _auth.signInWithEmailAndPassword(
           email: 'rwnlnsy@gmail.com', password: 'hughmungus');
     }
-    if (_currentUser == null) {
-      _currentUser = new User(name: 'Dumb iOS user');
-    }
+
+    name = 'Dumb iOS user';
+    email = 'rwnlnsy@gmail.com';
+    photoUrl = null;
   } else {
     GoogleSignInAccount user = _googleSignIn.currentUser;
     if (user == null) user = await _googleSignIn.signInSilently();
@@ -52,12 +58,38 @@ Future<bool> _checkSignIn() async {
         accessToken: credentials.accessToken,
       );
     }
-    if (_currentUser == null) {
-      _currentUser = new User(
-          name: _googleSignIn.currentUser.displayName,
-          photoUrl: _googleSignIn.currentUser.photoUrl);
+    name = _googleSignIn.currentUser.displayName;
+    email = _googleSignIn.currentUser.email;
+    photoUrl = _googleSignIn.currentUser.photoUrl;
+  }
+
+  // UPDATE USERS DATABASE
+
+  DataSnapshot snapshot =
+      await _usersRef.orderByChild('email').equalTo(email).once();
+  if (snapshot.value == null) {
+    var newRef = _usersRef.push();
+    newRef.set({
+      'name': name,
+      'email': email,
+      'photoUrl': photoUrl,
+    });
+    userKey = newRef.key;
+    ;
+  } else {
+    Map children = snapshot.value;
+    for (var key in children.keys) {
+      userKey = key; // assumes that there is one item matching email
     }
   }
+
+  // SET CURRENT USER
+
+  if (_currentUser == null) {
+    _currentUser = new User(
+        name: name, email: email, photoUrl: photoUrl, userKey: userKey);
+  }
+
   return true;
 }
 
@@ -73,8 +105,9 @@ class ChatApp extends StatelessWidget {
         theme: defaultTargetPlatform == TargetPlatform.iOS
             ? kIOSTheme
             : kDefaultTheme,
-        home: new ChatScreen(),
+        home: new ConversationScreen(),
         routes: <String, WidgetBuilder>{
+          'convos': (BuildContext context) => new ConversationScreen(),
           'chat': (BuildContext context) => new ChatScreen(),
         });
   }
@@ -96,16 +129,19 @@ class ChatState extends State<ChatScreen> {
         builder: (context, snapshot) {
           return new Scaffold(
               appBar: new AppBar(
-                title: new Text("ML Chat"),
+                title: new Text('ML Chat'),
                 elevation: Theme.of(context).platform == TargetPlatform.iOS
                     ? 0.0
                     : 4.0,
               ),
               body: new Column(children: <Widget>[
+                new Text(snapshot.hasData
+                    ? 'user: ${_currentUser.userKey}'
+                    : 'user not signed in'),
                 snapshot.hasData
                     ? new Flexible(
                         child: new FirebaseAnimatedList(
-                        query: _dataReference,
+                        query: _messagesRef,
                         sort: (a, b) => b.key.compareTo(a.key),
                         padding: new EdgeInsets.all(8.0),
                         reverse: true,
@@ -126,25 +162,54 @@ class ChatState extends State<ChatScreen> {
                   child: _buildTextEntry(),
                 ),
                 new Divider(height: 1.0),
-                new Container(
-                  height: 200.0, // TODO: put ml picker here
-                  decoration:
-                      new BoxDecoration(color: Theme.of(context).cardColor),
-                  child: new Center(
-                      child: new RaisedButton(
-                          child: new Text('\$'),
-                          onPressed: (() {
-                            setState(() {
-                              input = new Text('${input.data}\$');
-                              _isComposing =
-                                  true; // TODO: remove this default behaviour
-                            });
-                            _analytics.logEvent(
-                                name: 'placeholder_button_push');
-                          }))),
-                )
+                new DefaultTabController(
+                    length: 2,
+                    child: new Container(
+                        height: 200.0,
+                        decoration: new BoxDecoration(
+                            color: Theme.of(context).cardColor),
+                        child: new Column(
+                          children: <Widget>[
+                            new Expanded(
+                                child: new TabBarView(children: [
+                              _buildMLButton(
+                                  type: 'object',
+                                  platform: Theme.of(context).platform),
+                              _buildMLButton(
+                                  type: 'text',
+                                  platform: Theme.of(context).platform)
+                            ]))
+                          ],
+                        ))),
               ]));
         });
+  }
+
+  Widget _buildMLButton({type, platform}) {
+    Icon icon =
+        type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
+    Text label = type == 'object'
+        ? new Text('Find an Object')
+        : new Text('Find Some Text');
+    Widget buttonBody = new Center(
+        child: new Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        new Padding(padding: new EdgeInsets.all(10.0), child: icon),
+        label
+      ],
+    ));
+    var onPress = (() {
+      setState(() {
+        input = new Text('${input.data}\$');
+        _isComposing = true; // TODO: remove this default behaviour
+      });
+      _analytics.logEvent(name: 'placeholder_button_push');
+    });
+
+    return platform == TargetPlatform.iOS
+        ? new CupertinoButton(child: buttonBody, onPressed: onPress)
+        : new RaisedButton(child: buttonBody, onPressed: onPress);
   }
 
   Widget _buildTextEntry() {
@@ -190,7 +255,7 @@ class ChatState extends State<ChatScreen> {
   }
 
   void _sendMessage(String messageText) {
-    _dataReference.push().set({
+    _messagesRef.push().set({
       'text': messageText,
       'senderName': _currentUser.name,
       'senderPhotoUrl': _currentUser.photoUrl,
@@ -209,11 +274,6 @@ class Message extends StatelessWidget {
       sizeFactor: new CurvedAnimation(parent: animation, curve: Curves.easeOut),
       axisAlignment: 0.0,
       child: new Container(
-        decoration: new BoxDecoration(
-            color: _sentByThis()
-                ? Theme.of(context).primaryColor
-                : Theme.of(context).accentColor,
-            borderRadius: new BorderRadius.circular(10.0)),
         margin: const EdgeInsets.symmetric(vertical: 10.0),
         child: new Padding(
             padding: EdgeInsets.all(5.0),
@@ -240,19 +300,25 @@ class Message extends StatelessWidget {
                     ),
                   ),
                   new Expanded(
-                    child: new Column(
-                      crossAxisAlignment: _sentByThis()
-                          ? CrossAxisAlignment.start
-                          : CrossAxisAlignment.end,
-                      children: <Widget>[
-                        new Text(snapshot.value['senderName'],
-                            style: Theme.of(context).textTheme.title),
-                        new Container(
-                          margin: const EdgeInsets.only(top: 5.0),
-                          child: new Text(snapshot.value['text']),
-                        ),
-                      ],
-                    ),
+                    child: new Container(
+                        decoration: new BoxDecoration(
+                            color: _sentByThis()
+                                ? Theme.of(context).primaryColor
+                                : Theme.of(context).accentColor,
+                            borderRadius: new BorderRadius.circular(10.0)),
+                        child: new Padding(
+                            padding: new EdgeInsets.all(5.0),
+                            child: new Column(
+                              crossAxisAlignment: _sentByThis()
+                                  ? CrossAxisAlignment.start
+                                  : CrossAxisAlignment.end,
+                              children: <Widget>[
+                                new Text(
+                                  snapshot.value['text'],
+                                  style: _getMessageStyle(context),
+                                ),
+                              ],
+                            ))),
                   ),
                 ])),
       ),
@@ -263,11 +329,132 @@ class Message extends StatelessWidget {
     if (_currentUser == null) return false;
     return snapshot.value['senderName'] == _currentUser.name;
   }
+
+  TextStyle _getMessageStyle(BuildContext context) {
+    //white on dark or black on light
+    if (((Theme.of(context).platform == TargetPlatform.android) &&
+            _sentByThis()) ||
+        ((Theme.of(context).platform == TargetPlatform.iOS) &&
+            !_sentByThis())) {
+      return new TextStyle(color: Colors.white);
+    }
+    return null;
+  }
 }
 
 class User {
-  final String name;
-  final String photoUrl;
+  final String name, email, photoUrl, userKey;
 
-  User({this.name, this.photoUrl});
+  User({this.name, this.email, this.photoUrl, this.userKey});
+}
+
+class ConversationScreen extends StatefulWidget {
+  @override
+  State<StatefulWidget> createState() => new ConversationsState();
+}
+
+class ConversationsState extends State<ConversationScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return new Scaffold(
+      appBar: new AppBar(
+        title: new Text('ML Chat'),
+      ),
+      body: new FutureBuilder(
+          future: _checkSignIn(),
+          builder: (context, snapshot) {
+            return snapshot.hasData
+                ? new FutureBuilder(
+                    future: getGroups(),
+                    builder: (context, snapshot) {
+                      return snapshot.hasData
+                          ? new ListView.builder(
+                              itemCount: snapshot.data.length,
+                              itemBuilder: (context, index) {
+                                return snapshot.data[index];
+                              })
+                          : snapshot.hasError
+                              ? new Text(
+                                  'error loading conversations: ${snapshot.error}')
+                              : new Text('loading conversations');
+                    })
+                : snapshot.hasError
+                    ? new Text('error signing in: ${snapshot.error}')
+                    : new Text('authenticating');
+          }),
+    );
+  }
+}
+
+Future<List<Conversation>> getGroups() async {
+  print('getting groups');
+
+  List<Conversation> conversations = new List();
+
+  DataSnapshot snapshot =
+      await FirebaseDatabase.instance.reference().child('groups').once();
+
+  Map data = snapshot.value;
+
+  for (var key in data.keys) {
+    Map group = snapshot.value[key];
+
+    DataSnapshot memberGroups = await FirebaseDatabase.instance
+        .reference()
+        .child('users/${_currentUser.userKey}/groups/$key')
+        .once();
+
+    if (memberGroups.value != null) {
+      //current user belongs to this group
+
+      List<User> groupMembers = new List();
+
+      Map members = group['members'];
+
+      for (var userKey in members.keys) {
+        DataSnapshot userSnapshot =
+            await FirebaseDatabase.instance.reference().child('users').once();
+        Map users = userSnapshot.value;
+        Map user = users[userKey];
+
+        groupMembers.add(new User(
+          name: user['name'],
+          email: user['email'],
+          photoUrl: user['photoUrl'],
+        ));
+      }
+
+      conversations.add(new Conversation(
+        name: group['name'],
+        members: groupMembers,
+      ));
+    }
+  }
+
+  return conversations;
+}
+
+class Conversation extends StatelessWidget {
+  String name;
+  List<User> members;
+
+  Conversation({this.name, this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    return new ListTile(
+      leading: new Icon(Icons.perm_identity),
+      title: new Text(name),
+      subtitle: new Text(_buildMemberShortList()),
+    );
+  }
+
+  String _buildMemberShortList({int index = 0}) {
+    if (index < members.length) {
+      return '${members[index].name}${index + 1 == members.length
+      ? '' : ', '}${_buildMemberShortList(index: index + 1)}';
+    } else {
+      return '';
+    }
+  }
 }
