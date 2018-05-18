@@ -72,6 +72,7 @@ Future<bool> _checkSignIn() async {
       'name': name,
       'email': email,
       'photoUrl': photoUrl,
+      'godMode': false,
     });
     userKey = newRef.key;
     ;
@@ -82,11 +83,21 @@ Future<bool> _checkSignIn() async {
     }
   }
 
+  DataSnapshot userSnapshot = await FirebaseDatabase.instance
+      .reference()
+      .child('users/$userKey')
+      .once();
+  Map userData = userSnapshot.value;
+
   // SET CURRENT USER
 
   if (_currentUser == null) {
     _currentUser = new User(
-        name: name, email: email, photoUrl: photoUrl, userKey: userKey);
+        name: name,
+        email: email,
+        photoUrl: photoUrl,
+        userKey: userKey,
+        godMode: userData['godMode']);
   }
 
   return true;
@@ -110,7 +121,6 @@ class ChatApp extends StatelessWidget {
 }
 
 class ChatScreen extends StatefulWidget {
-
   final Conversation conversation;
 
   ChatScreen({this.conversation}) : super();
@@ -120,6 +130,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class ChatState extends State<ChatScreen> {
+  final TextEditingController _textController = new TextEditingController();
 
   MLKeyboard keyboard;
 
@@ -162,7 +173,8 @@ class ChatState extends State<ChatScreen> {
                       ))
                     : new Expanded(
                         child: snapshot.hasError
-                            ? new LoadingScreen(message: 'error signing in: ${snapshot.error}')
+                            ? new LoadingScreen(
+                                message: 'error signing in: ${snapshot.error}')
                             : new LoadingScreen(message: 'loading messages')),
                 new Divider(height: 1.0),
                 new Container(
@@ -182,22 +194,40 @@ class ChatState extends State<ChatScreen> {
       child: new Container(
           margin: const EdgeInsets.symmetric(horizontal: 8.0),
           child: new Row(children: <Widget>[
-            new Expanded(
-              child: _input,
-            ),
+            _currentUser.godModeOn
+                ? new Flexible(
+                    child: new TextField(
+                      controller: _textController,
+                      onChanged: ((text) {
+                        setState(() {
+                          _isComposing = text.length > 0;
+                        });
+                      }),
+                      onSubmitted: _handleSubmitted,
+                      decoration: new InputDecoration.collapsed(
+                          hintText: "Send a message"),
+                    ),
+                  )
+                : new Expanded(
+                    child: _input,
+                  ),
             new Container(
                 margin: new EdgeInsets.symmetric(horizontal: 4.0),
                 child: Theme.of(context).platform == TargetPlatform.iOS
                     ? new CupertinoButton(
                         child: new Text("Send"),
                         onPressed: _isComposing
-                            ? () => _handleSubmitted(_input.data)
+                            ? () => _handleSubmitted(_currentUser.godModeOn
+                                ? _textController.text
+                                : _input.data)
                             : null,
                       )
                     : new IconButton(
                         icon: new Icon(Icons.send),
                         onPressed: _isComposing
-                            ? () => _handleSubmitted(_input.data)
+                            ? () => _handleSubmitted(_currentUser.godModeOn
+                                ? _textController.text
+                                : _input.data)
                             : null,
                       )),
           ]),
@@ -217,6 +247,7 @@ class ChatState extends State<ChatScreen> {
   }
 
   void _handleSubmitted(String messageText) async {
+    _textController.clear();
     setState(() {
       _input = new Text('');
       _isComposing = false;
@@ -226,8 +257,11 @@ class ChatState extends State<ChatScreen> {
   }
 
   void _sendMessage(String messageText) {
-    FirebaseDatabase.instance.reference().child(
-        'groups/${widget.conversation.groupID}/messages').push().set({
+    FirebaseDatabase.instance
+        .reference()
+        .child('groups/${widget.conversation.groupID}/messages')
+        .push()
+        .set({
       'text': messageText,
       'senderName': _currentUser.name,
       'senderPhotoUrl': _currentUser.photoUrl,
@@ -252,6 +286,9 @@ class MLKeyboardState extends State<MLKeyboard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_currentUser.godModeOn) {
+      return new Container();
+    }
     switch (state) {
       case KeyboardState.chooser:
         return new DefaultTabController(
@@ -400,8 +437,18 @@ class Message extends StatelessWidget {
 
 class User {
   final String name, email, photoUrl, userKey;
+  final bool godMode;
+  bool godModeOn;
 
-  User({this.name, this.email, this.photoUrl, this.userKey});
+  User({this.name, this.email, this.photoUrl, this.userKey, this.godMode}) {
+    godModeOn = godMode;
+  }
+
+  toggleGodMode() {
+    if (godMode) {
+      godModeOn = !godModeOn;
+    }
+  }
 }
 
 class ConversationScreen extends StatefulWidget {
@@ -415,6 +462,20 @@ class ConversationsState extends State<ConversationScreen> {
     return new Scaffold(
       appBar: new AppBar(
         title: new Text('ML Chat'),
+        actions: <Widget>[
+          (_currentUser != null && _currentUser.godMode)
+              ? new IconButton(
+                  icon: new Icon(Icons.accessibility),
+                  tooltip: 'toggle God mode',
+                  onPressed: (() {
+                    setState(() {
+                      _currentUser.toggleGodMode();
+                    });
+                  }),
+                )
+              : new Container()
+          // TODO: move this toggle to a settings view
+        ],
       ),
       body: new FutureBuilder(
           future: _checkSignIn(),
@@ -430,11 +491,15 @@ class ConversationsState extends State<ConversationScreen> {
                                 return snapshot.data[index];
                               })
                           : snapshot.hasError
-                              ? new LoadingScreen(message: 'error loading conversations: ${snapshot.error}')
-                              : new LoadingScreen(message: 'loading conversations');
+                              ? new LoadingScreen(
+                                  message:
+                                      'error loading conversations: ${snapshot.error}')
+                              : new LoadingScreen(
+                                  message: 'loading conversations');
                     })
                 : snapshot.hasError
-                    ? new LoadingScreen(message: 'error signing in: ${snapshot.error}')
+                    ? new LoadingScreen(
+                        message: 'error signing in: ${snapshot.error}')
                     : new LoadingScreen(message: 'authenticating');
           }),
     );
@@ -491,7 +556,7 @@ Future<List<Conversation>> getGroups() async {
 class Conversation extends StatelessWidget {
   String name;
   String groupID;
-  List<User> members;
+  List<User> members; //note: these user objects may not have all data
 
   Conversation({this.name, this.groupID, this.members});
 
@@ -520,15 +585,12 @@ class Conversation extends StatelessWidget {
 }
 
 class LoadingScreen extends StatelessWidget {
-
   String message;
 
   LoadingScreen({this.message = 'Loading...'}) : super();
 
   @override
   Widget build(BuildContext context) {
-    return new Center(
-      child: new Text(message)
-    );
+    return new Center(child: new Text(message));
   }
 }
