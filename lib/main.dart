@@ -130,16 +130,11 @@ class ChatScreen extends StatefulWidget {
 }
 
 class ChatState extends State<ChatScreen> {
-  final TextEditingController _textController = new TextEditingController();
-
-  MLKeyboard keyboard;
+  Input input; //bottom entity including keyboard and field
 
   ChatState() : super() {
-    keyboard = new MLKeyboard(chatState: this);
+    input = new Input(chatState: this);
   }
-
-  Text _input = new Text('');
-  bool _isComposing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -176,90 +171,116 @@ class ChatState extends State<ChatScreen> {
                             ? new LoadingScreen(
                                 message: 'error signing in: ${snapshot.error}')
                             : new LoadingScreen(message: 'loading messages')),
-                new Divider(height: 1.0),
-                new Container(
-                  decoration:
-                      new BoxDecoration(color: Theme.of(context).cardColor),
-                  child: _buildTextEntry(),
-                ),
-                new Divider(height: 1.0),
-                keyboard,
+                input,
               ]));
         });
   }
+}
 
-  Widget _buildTextEntry() {
+class Input extends StatefulWidget {
+  ChatState chatState;
+
+  Input({this.chatState}) : super();
+
+  @override
+  State<StatefulWidget> createState() => new InputState();
+}
+
+enum KeyboardState { chooser, words }
+
+class InputState extends State<Input> {
+  final TextEditingController _textController = new TextEditingController();
+
+  Text inputText = new Text('');
+  bool _isComposing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return new Container(
+        child: new Column(
+      children: <Widget>[
+        new Divider(height: 1.0),
+        new Container(
+          decoration: new BoxDecoration(color: Theme.of(context).cardColor),
+          child: buildEntryRow(context),
+        ),
+        new Divider(height: 1.0),
+        buildKeyboard(context),
+      ],
+    ));
+  }
+
+  Widget buildEntryRow(BuildContext context) {
     return new IconTheme(
       data: new IconThemeData(color: Theme.of(context).accentColor),
       child: new Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: new Row(children: <Widget>[
-            _currentUser.godModeOn
-                ? new Flexible(
-                    child: new TextField(
-                      controller: _textController,
-                      onChanged: ((text) {
-                        setState(() {
-                          _isComposing = text.length > 0;
-                        });
-                      }),
-                      onSubmitted: _handleSubmitted,
-                      decoration: new InputDecoration.collapsed(
-                          hintText: "Send a message"),
-                    ),
-                  )
-                : new Expanded(
-                    child: _input,
-                  ),
-            new Container(
-                margin: new EdgeInsets.symmetric(horizontal: 4.0),
-                child: Theme.of(context).platform == TargetPlatform.iOS
-                    ? new CupertinoButton(
-                        child: new Text("Send"),
-                        onPressed: _isComposing
-                            ? () => _handleSubmitted(_currentUser.godModeOn
-                                ? _textController.text
-                                : _input.data)
-                            : null,
-                      )
-                    : new IconButton(
-                        icon: new Icon(Icons.send),
-                        onPressed: _isComposing
-                            ? () => _handleSubmitted(_currentUser.godModeOn
-                                ? _textController.text
-                                : _input.data)
-                            : null,
-                      )),
-          ]),
-          decoration: Theme.of(context).platform == TargetPlatform.iOS
-              ? new BoxDecoration(
-                  border:
-                      new Border(top: new BorderSide(color: Colors.grey[200])))
-              : null),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: new Row(children: <Widget>[
+          buildTextField(context),
+          new Container(
+              margin: new EdgeInsets.symmetric(horizontal: 4.0),
+              child: Theme.of(context).platform == TargetPlatform.iOS
+                  ? new CupertinoButton(
+                      child: new Text("Send"),
+                      onPressed: _isComposing ? () => _handleSubmitted() : null,
+                    )
+                  : new IconButton(
+                      icon: new Icon(Icons.send),
+                      onPressed: _isComposing ? () => _handleSubmitted() : null,
+                    )),
+        ]),
+      ),
+    );
+  }
+
+  Widget buildTextField(BuildContext context) {
+    if (_currentUser.godModeOn) {
+      return new Flexible(
+          child: new TextField(
+        controller: _textController,
+        onChanged: ((text) {
+          setState(() {
+            _isComposing = text.length > 0;
+          });
+        }),
+        onSubmitted: (text) => _handleSubmitted,
+        decoration: new InputDecoration.collapsed(hintText: "Send a message"),
+      ));
+    }
+
+    return new Expanded(
+      child: _isComposing
+          ? inputText
+          : new Text(
+              'Send a message',
+              style: new TextStyle(color: Colors.grey),
+            ),
     );
   }
 
   void enterText(String text) {
     setState(() {
-      _input = new Text('${_input.data} $text');
-      _isComposing = true; // TODO: remove this default behaviour
+      inputText = new Text('${inputText.data} $text'); //includes a space
+      _isComposing = inputText.data.length > 0;
     });
   }
 
-  void _handleSubmitted(String messageText) async {
+  _handleSubmitted() async {
+    String toSend = getDataToSend();
     _textController.clear();
     setState(() {
-      _input = new Text('');
+      inputText = new Text('');
       _isComposing = false;
     });
     await _checkSignIn();
-    _sendMessage(messageText);
+    _sendMessage(toSend);
   }
 
   void _sendMessage(String messageText) {
     FirebaseDatabase.instance
         .reference()
-        .child('groups/${widget.conversation.groupID}/messages')
+        .child(
+            'groups/${widget.chatState.widget.conversation.groupID}/messages')
         .push()
         .set({
       'text': messageText,
@@ -268,66 +289,64 @@ class ChatState extends State<ChatScreen> {
     });
     _analytics.logEvent(name: 'message_send');
   }
-}
 
-class MLKeyboard extends StatefulWidget {
-  ChatState chatState;
+  String getDataToSend() {
+    if (_currentUser.godModeOn) {
+      return _textController.text;
+    } else {
+      return inputText.data;
+    }
+  }
 
-  MLKeyboard({this.chatState}) : super();
+  // KEYBOARD
 
-  @override
-  State<StatefulWidget> createState() => new MLKeyboardState();
-}
-
-enum KeyboardState { chooser, words }
-
-class MLKeyboardState extends State<MLKeyboard> {
   KeyboardState state = KeyboardState.chooser;
 
   @override
-  Widget build(BuildContext context) {
-    if (_currentUser.godModeOn) {
-      return new Container();
+  Widget buildKeyboard(BuildContext context) {
+    if (!_currentUser.godModeOn) {
+      switch (state) {
+        case KeyboardState.chooser:
+          return new DefaultTabController(
+              length: 2,
+              child: new Container(
+                  height: 200.0,
+                  decoration:
+                      new BoxDecoration(color: Theme.of(context).cardColor),
+                  child: new Column(
+                    children: <Widget>[
+                      new Expanded(
+                          child: new TabBarView(children: [
+                        _buildMLButton(
+                            type: 'object',
+                            platform: Theme.of(context).platform),
+                        _buildMLButton(
+                            type: 'text', platform: Theme.of(context).platform)
+                      ]))
+                    ],
+                  )));
+          break;
+        case KeyboardState.words:
+          return new Container(
+              height: 200.0,
+              child: new Column(
+                children: <Widget>[
+                  new Align(
+                      alignment: Alignment.centerRight,
+                      child: new IconButton(
+                          icon: new Icon(Icons.close),
+                          onPressed: (() {
+                            setState(() {
+                              state = KeyboardState.chooser;
+                            });
+                          }))),
+                  new Expanded(child: new Container())
+                ],
+              ));
+          break;
+      }
     }
-    switch (state) {
-      case KeyboardState.chooser:
-        return new DefaultTabController(
-            length: 2,
-            child: new Container(
-                height: 200.0,
-                decoration:
-                    new BoxDecoration(color: Theme.of(context).cardColor),
-                child: new Column(
-                  children: <Widget>[
-                    new Expanded(
-                        child: new TabBarView(children: [
-                      _buildMLButton(
-                          type: 'object', platform: Theme.of(context).platform),
-                      _buildMLButton(
-                          type: 'text', platform: Theme.of(context).platform)
-                    ]))
-                  ],
-                )));
-        break;
-      case KeyboardState.words:
-        return new Container(
-            height: 200.0,
-            child: new Column(
-              children: <Widget>[
-                new Align(
-                    alignment: Alignment.centerRight,
-                    child: new IconButton(
-                        icon: new Icon(Icons.close),
-                        onPressed: (() {
-                          setState(() {
-                            state = KeyboardState.chooser;
-                          });
-                        }))),
-                new Expanded(child: new Container())
-              ],
-            ));
-        break;
-    }
+    return new Container();
   }
 
   Widget _buildMLButton({type, platform}) {
@@ -347,6 +366,7 @@ class MLKeyboardState extends State<MLKeyboard> {
     var onPress = (() {
       _analytics.logEvent(name: 'placeholder_button_push');
       setState(() {
+        enterText('\$');
         state = KeyboardState.words;
       });
     });
@@ -387,10 +407,6 @@ class Message extends StatelessWidget {
                           ? new Text((snapshot.value['senderName'])[0])
                           : null,
                     ),
-                    decoration: new BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: new Border.all(color: Colors.grey),
-                    ),
                   ),
                   new Expanded(
                     child: new Container(
@@ -398,9 +414,9 @@ class Message extends StatelessWidget {
                             color: _sentByThis()
                                 ? Theme.of(context).primaryColor
                                 : Theme.of(context).accentColor,
-                            borderRadius: new BorderRadius.circular(10.0)),
+                            borderRadius: new BorderRadius.circular(14.0)),
                         child: new Padding(
-                            padding: new EdgeInsets.all(5.0),
+                            padding: new EdgeInsets.all(8.0),
                             child: new Column(
                               crossAxisAlignment: _sentByThis()
                                   ? CrossAxisAlignment.start
