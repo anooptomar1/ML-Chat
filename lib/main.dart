@@ -24,7 +24,6 @@ final ThemeData kDefaultTheme = new ThemeData(
 final _googleSignIn = new GoogleSignIn();
 final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
-final _messagesRef = FirebaseDatabase.instance.reference().child('messages');
 final _usersRef = FirebaseDatabase.instance.reference().child('users');
 
 User _currentUser;
@@ -101,19 +100,21 @@ class ChatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return new MaterialApp(
-        title: "ML Chat",
-        theme: defaultTargetPlatform == TargetPlatform.iOS
-            ? kIOSTheme
-            : kDefaultTheme,
-        home: new ChatScreen(),
-        routes: <String, WidgetBuilder>{
-          'convos': (BuildContext context) => new ConversationScreen(),
-          'chat': (BuildContext context) => new ChatScreen(),
-        });
+      title: "ML Chat",
+      theme: defaultTargetPlatform == TargetPlatform.iOS
+          ? kIOSTheme
+          : kDefaultTheme,
+      home: new ConversationScreen(),
+    );
   }
 }
 
 class ChatScreen extends StatefulWidget {
+
+  final Conversation conversation;
+
+  ChatScreen({this.conversation}) : super();
+
   @override
   State createState() => new ChatState();
 }
@@ -148,7 +149,8 @@ class ChatState extends State<ChatScreen> {
                 snapshot.hasData
                     ? new Flexible(
                         child: new FirebaseAnimatedList(
-                        query: _messagesRef,
+                        query: FirebaseDatabase.instance.reference().child(
+                            'groups/${widget.conversation.groupID}/messages'),
                         sort: (a, b) => b.key.compareTo(a.key),
                         padding: new EdgeInsets.all(8.0),
                         reverse: true,
@@ -224,7 +226,8 @@ class ChatState extends State<ChatScreen> {
   }
 
   void _sendMessage(String messageText) {
-    _messagesRef.push().set({
+    FirebaseDatabase.instance.reference().child(
+        'groups/${widget.conversation.groupID}/messages').push().set({
       'text': messageText,
       'senderName': _currentUser.name,
       'senderPhotoUrl': _currentUser.photoUrl,
@@ -234,7 +237,6 @@ class ChatState extends State<ChatScreen> {
 }
 
 class MLKeyboard extends StatefulWidget {
-
   ChatState chatState;
 
   MLKeyboard({this.chatState}) : super();
@@ -243,76 +245,68 @@ class MLKeyboard extends StatefulWidget {
   State<StatefulWidget> createState() => new MLKeyboardState();
 }
 
-enum KeyboardState {
-  chooser, words
-}
+enum KeyboardState { chooser, words }
 
 class MLKeyboardState extends State<MLKeyboard> {
-
   KeyboardState state = KeyboardState.chooser;
 
   @override
   Widget build(BuildContext context) {
     switch (state) {
-      case KeyboardState.chooser :
+      case KeyboardState.chooser:
         return new DefaultTabController(
             length: 2,
             child: new Container(
                 height: 200.0,
-                decoration: new BoxDecoration(
-                    color: Theme.of(context).cardColor),
+                decoration:
+                    new BoxDecoration(color: Theme.of(context).cardColor),
                 child: new Column(
                   children: <Widget>[
                     new Expanded(
                         child: new TabBarView(children: [
-                          _buildMLButton(
-                              type: 'object',
-                              platform: Theme.of(context).platform),
-                          _buildMLButton(
-                              type: 'text',
-                              platform: Theme.of(context).platform)
-                        ]))
+                      _buildMLButton(
+                          type: 'object', platform: Theme.of(context).platform),
+                      _buildMLButton(
+                          type: 'text', platform: Theme.of(context).platform)
+                    ]))
                   ],
                 )));
         break;
-      case KeyboardState.words :
+      case KeyboardState.words:
         return new Container(
-          height: 200.0,
-          child: new Column(
-            children: <Widget>[
-              new Align(
-                alignment: Alignment.centerRight,
-                child: new IconButton(icon: new Icon(Icons.close),
-                    onPressed: (() {
-                      setState(() {
-                        state = KeyboardState.chooser;
-                      });
-                    }))
-              ),
-              new Expanded(
-                child: new Container()
-              )
-            ],
-          )
-        );
+            height: 200.0,
+            child: new Column(
+              children: <Widget>[
+                new Align(
+                    alignment: Alignment.centerRight,
+                    child: new IconButton(
+                        icon: new Icon(Icons.close),
+                        onPressed: (() {
+                          setState(() {
+                            state = KeyboardState.chooser;
+                          });
+                        }))),
+                new Expanded(child: new Container())
+              ],
+            ));
         break;
     }
   }
 
   Widget _buildMLButton({type, platform}) {
     Icon icon =
-    type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
+        type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
     Text label = type == 'object'
         ? new Text('Find an Object')
         : new Text('Find Some Text');
     Widget buttonBody = new Center(
         child: new Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            new Padding(padding: new EdgeInsets.all(10.0), child: icon),
-            label
-          ],
-        ));
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        new Padding(padding: new EdgeInsets.all(10.0), child: icon),
+        label
+      ],
+    ));
     var onPress = (() {
       _analytics.logEvent(name: 'placeholder_button_push');
       setState(() {
@@ -449,8 +443,6 @@ class ConversationsState extends State<ConversationScreen> {
 }
 
 Future<List<Conversation>> getGroups() async {
-  print('getting groups');
-
   List<Conversation> conversations = new List();
 
   DataSnapshot snapshot =
@@ -488,6 +480,7 @@ Future<List<Conversation>> getGroups() async {
 
       conversations.add(new Conversation(
         name: group['name'],
+        groupID: key,
         members: groupMembers,
       ));
     }
@@ -498,9 +491,10 @@ Future<List<Conversation>> getGroups() async {
 
 class Conversation extends StatelessWidget {
   String name;
+  String groupID;
   List<User> members;
 
-  Conversation({this.name, this.members});
+  Conversation({this.name, this.groupID, this.members});
 
   @override
   Widget build(BuildContext context) {
@@ -508,6 +502,11 @@ class Conversation extends StatelessWidget {
       leading: new Icon(Icons.perm_identity),
       title: new Text(name),
       subtitle: new Text(_buildMemberShortList()),
+      onTap: (() {
+        Navigator.of(context).push(new MaterialPageRoute(builder: (context) {
+          return new ChatScreen(conversation: this);
+        }));
+      }),
     );
   }
 
