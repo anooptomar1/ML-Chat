@@ -105,7 +105,7 @@ class ChatApp extends StatelessWidget {
         theme: defaultTargetPlatform == TargetPlatform.iOS
             ? kIOSTheme
             : kDefaultTheme,
-        home: new ConversationScreen(),
+        home: new ChatScreen(),
         routes: <String, WidgetBuilder>{
           'convos': (BuildContext context) => new ConversationScreen(),
           'chat': (BuildContext context) => new ChatScreen(),
@@ -119,7 +119,14 @@ class ChatScreen extends StatefulWidget {
 }
 
 class ChatState extends State<ChatScreen> {
-  Text input = new Text('');
+
+  MLKeyboard keyboard;
+
+  ChatState() : super() {
+    keyboard = new MLKeyboard(chatState: this);
+  }
+
+  Text _input = new Text('');
   bool _isComposing = false;
 
   @override
@@ -162,54 +169,9 @@ class ChatState extends State<ChatScreen> {
                   child: _buildTextEntry(),
                 ),
                 new Divider(height: 1.0),
-                new DefaultTabController(
-                    length: 2,
-                    child: new Container(
-                        height: 200.0,
-                        decoration: new BoxDecoration(
-                            color: Theme.of(context).cardColor),
-                        child: new Column(
-                          children: <Widget>[
-                            new Expanded(
-                                child: new TabBarView(children: [
-                              _buildMLButton(
-                                  type: 'object',
-                                  platform: Theme.of(context).platform),
-                              _buildMLButton(
-                                  type: 'text',
-                                  platform: Theme.of(context).platform)
-                            ]))
-                          ],
-                        ))),
+                keyboard,
               ]));
         });
-  }
-
-  Widget _buildMLButton({type, platform}) {
-    Icon icon =
-        type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
-    Text label = type == 'object'
-        ? new Text('Find an Object')
-        : new Text('Find Some Text');
-    Widget buttonBody = new Center(
-        child: new Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        new Padding(padding: new EdgeInsets.all(10.0), child: icon),
-        label
-      ],
-    ));
-    var onPress = (() {
-      setState(() {
-        input = new Text('${input.data}\$');
-        _isComposing = true; // TODO: remove this default behaviour
-      });
-      _analytics.logEvent(name: 'placeholder_button_push');
-    });
-
-    return platform == TargetPlatform.iOS
-        ? new CupertinoButton(child: buttonBody, onPressed: onPress)
-        : new RaisedButton(child: buttonBody, onPressed: onPress);
   }
 
   Widget _buildTextEntry() {
@@ -219,7 +181,7 @@ class ChatState extends State<ChatScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 8.0),
           child: new Row(children: <Widget>[
             new Expanded(
-              child: input,
+              child: _input,
             ),
             new Container(
                 margin: new EdgeInsets.symmetric(horizontal: 4.0),
@@ -227,13 +189,13 @@ class ChatState extends State<ChatScreen> {
                     ? new CupertinoButton(
                         child: new Text("Send"),
                         onPressed: _isComposing
-                            ? () => _handleSubmitted(input.data)
+                            ? () => _handleSubmitted(_input.data)
                             : null,
                       )
                     : new IconButton(
                         icon: new Icon(Icons.send),
                         onPressed: _isComposing
-                            ? () => _handleSubmitted(input.data)
+                            ? () => _handleSubmitted(_input.data)
                             : null,
                       )),
           ]),
@@ -245,9 +207,16 @@ class ChatState extends State<ChatScreen> {
     );
   }
 
+  void enterText(String text) {
+    setState(() {
+      _input = new Text('${_input.data} $text');
+      _isComposing = true; // TODO: remove this default behaviour
+    });
+  }
+
   void _handleSubmitted(String messageText) async {
     setState(() {
-      input = new Text('');
+      _input = new Text('');
       _isComposing = false;
     });
     await _checkSignIn();
@@ -261,6 +230,99 @@ class ChatState extends State<ChatScreen> {
       'senderPhotoUrl': _currentUser.photoUrl,
     });
     _analytics.logEvent(name: 'message_send');
+  }
+}
+
+class MLKeyboard extends StatefulWidget {
+
+  ChatState chatState;
+
+  MLKeyboard({this.chatState}) : super();
+
+  @override
+  State<StatefulWidget> createState() => new MLKeyboardState();
+}
+
+enum KeyboardState {
+  chooser, words
+}
+
+class MLKeyboardState extends State<MLKeyboard> {
+
+  KeyboardState state = KeyboardState.chooser;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (state) {
+      case KeyboardState.chooser :
+        return new DefaultTabController(
+            length: 2,
+            child: new Container(
+                height: 200.0,
+                decoration: new BoxDecoration(
+                    color: Theme.of(context).cardColor),
+                child: new Column(
+                  children: <Widget>[
+                    new Expanded(
+                        child: new TabBarView(children: [
+                          _buildMLButton(
+                              type: 'object',
+                              platform: Theme.of(context).platform),
+                          _buildMLButton(
+                              type: 'text',
+                              platform: Theme.of(context).platform)
+                        ]))
+                  ],
+                )));
+        break;
+      case KeyboardState.words :
+        return new Container(
+          height: 200.0,
+          child: new Column(
+            children: <Widget>[
+              new Align(
+                alignment: Alignment.centerRight,
+                child: new IconButton(icon: new Icon(Icons.close),
+                    onPressed: (() {
+                      setState(() {
+                        state = KeyboardState.chooser;
+                      });
+                    }))
+              ),
+              new Expanded(
+                child: new Container()
+              )
+            ],
+          )
+        );
+        break;
+    }
+  }
+
+  Widget _buildMLButton({type, platform}) {
+    Icon icon =
+    type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
+    Text label = type == 'object'
+        ? new Text('Find an Object')
+        : new Text('Find Some Text');
+    Widget buttonBody = new Center(
+        child: new Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            new Padding(padding: new EdgeInsets.all(10.0), child: icon),
+            label
+          ],
+        ));
+    var onPress = (() {
+      _analytics.logEvent(name: 'placeholder_button_push');
+      setState(() {
+        state = KeyboardState.words;
+      });
+    });
+
+    return platform == TargetPlatform.iOS
+        ? new CupertinoButton(child: buttonBody, onPressed: onPress)
+        : new RaisedButton(child: buttonBody, onPressed: onPress);
   }
 }
 
