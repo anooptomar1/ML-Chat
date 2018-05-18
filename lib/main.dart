@@ -479,18 +479,15 @@ class ConversationsState extends State<ConversationScreen> {
       appBar: new AppBar(
         title: new Text('ML Chat'),
         actions: <Widget>[
-          (_currentUser != null && _currentUser.godMode)
-              ? new IconButton(
-                  icon: new Icon(Icons.accessibility),
-                  tooltip: 'toggle God mode',
-                  onPressed: (() {
-                    setState(() {
-                      _currentUser.toggleGodMode();
-                    });
-                  }),
-                )
-              : new Container()
-          // TODO: move this toggle to a settings view
+          new IconButton(
+            icon: new Icon(Icons.settings),
+            tooltip: 'toggle God mode',
+            onPressed: (() {
+              Navigator.of(context).push(new MaterialPageRoute(
+                    builder: (context) => new SettingsScreen(),
+                  ));
+            }),
+          )
         ],
       ),
       body: new FutureBuilder(
@@ -608,5 +605,44 @@ class LoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return new Center(child: new Text(message));
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  @override
+  State<StatefulWidget> createState() => new SettingsState();
+}
+
+class SettingsState extends State<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return new Scaffold(
+        appBar: new AppBar(),
+        body: new Center(
+            child: new Column(
+          children: <Widget>[
+            new FutureBuilder(
+                future: _checkSignIn(),
+                builder: (context, snapshot) {
+                  return snapshot.hasData
+                      ? new Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            _currentUser.godMode
+                                ? new Checkbox(
+                                    value: _currentUser.godModeOn,
+                                    onChanged: ((val) {
+                                      setState(() {
+                                        _currentUser.toggleGodMode();
+                                      });
+                                    }))
+                                : null,
+                            new Text('godMode'),
+                          ],
+                        )
+                      : new Container();
+                })
+          ],
+        )));
   }
 }
