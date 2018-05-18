@@ -75,7 +75,6 @@ Future<bool> _checkSignIn() async {
       'godMode': false,
     });
     userKey = newRef.key;
-    ;
   } else {
     Map children = snapshot.value;
     for (var key in children.keys) {
@@ -100,7 +99,7 @@ Future<bool> _checkSignIn() async {
         godMode: userData['godMode']);
   }
 
-  return true;
+  return _auth.currentUser() != null;
 }
 
 void main() {
@@ -286,6 +285,7 @@ class InputState extends State<Input> {
       'text': messageText,
       'senderName': _currentUser.name,
       'senderPhotoUrl': _currentUser.photoUrl,
+      'senderID' : _currentUser.userKey,
     });
     _analytics.logEvent(name: 'message_send');
   }
@@ -413,7 +413,10 @@ class Message extends StatelessWidget {
                         decoration: new BoxDecoration(
                             color: _sentByThis()
                                 ? Theme.of(context).primaryColor
-                                : Theme.of(context).accentColor,
+                                : Theme.of(context).platform ==
+                                        TargetPlatform.iOS
+                                    ? Theme.of(context).accentColor
+                                    : Colors.grey[100],
                             borderRadius: new BorderRadius.circular(14.0)),
                         child: new Padding(
                             padding: new EdgeInsets.all(8.0),
@@ -436,7 +439,7 @@ class Message extends StatelessWidget {
 
   bool _sentByThis() {
     if (_currentUser == null) return false;
-    return snapshot.value['senderName'] == _currentUser.name;
+    return snapshot.value['senderID'] == _currentUser.userKey;
   }
 
   TextStyle _getMessageStyle(BuildContext context) {
@@ -513,7 +516,7 @@ class ConversationsState extends State<ConversationScreen> {
                 : snapshot.hasError
                     ? new LoadingScreen(
                         message: 'error signing in: ${snapshot.error}')
-                    : new LoadingScreen(message: 'authenticating');
+                    : new LoadingScreen(message: 'logging in');
           }),
     );
   }
@@ -617,7 +620,9 @@ class SettingsState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return new Scaffold(
-        appBar: new AppBar(),
+        appBar: new AppBar(
+          title: const Text('Settings'),
+        ),
         body: new Center(
             child: new Column(
           children: <Widget>[
@@ -625,21 +630,21 @@ class SettingsState extends State<SettingsScreen> {
                 future: _checkSignIn(),
                 builder: (context, snapshot) {
                   return snapshot.hasData
-                      ? new Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            _currentUser.godMode
-                                ? new Checkbox(
+                      ? _currentUser.godMode
+                          ? new Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                new Checkbox(
                                     value: _currentUser.godModeOn,
                                     onChanged: ((val) {
                                       setState(() {
                                         _currentUser.toggleGodMode();
                                       });
-                                    }))
-                                : null,
-                            new Text('godMode'),
-                          ],
-                        )
+                                    })),
+                                new Text('godMode'),
+                              ],
+                            )
+                          : new Container()
                       : new Container();
                 })
           ],
