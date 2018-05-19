@@ -24,7 +24,6 @@ final ThemeData kDefaultTheme = new ThemeData(
 final _googleSignIn = new GoogleSignIn();
 final _auth = FirebaseAuth.instance;
 final _analytics = new FirebaseAnalytics();
-final _messagesRef = FirebaseDatabase.instance.reference().child('messages');
 final _usersRef = FirebaseDatabase.instance.reference().child('users');
 
 User _currentUser;
@@ -73,9 +72,9 @@ Future<bool> _checkSignIn() async {
       'name': name,
       'email': email,
       'photoUrl': photoUrl,
+      'godMode': false,
     });
     userKey = newRef.key;
-    ;
   } else {
     Map children = snapshot.value;
     for (var key in children.keys) {
@@ -83,14 +82,24 @@ Future<bool> _checkSignIn() async {
     }
   }
 
+  DataSnapshot userSnapshot = await FirebaseDatabase.instance
+      .reference()
+      .child('users/$userKey')
+      .once();
+  Map userData = userSnapshot.value;
+
   // SET CURRENT USER
 
   if (_currentUser == null) {
     _currentUser = new User(
-        name: name, email: email, photoUrl: photoUrl, userKey: userKey);
+        name: name,
+        email: email,
+        photoUrl: photoUrl,
+        userKey: userKey,
+        godMode: userData['godMode']);
   }
 
-  return true;
+  return _auth.currentUser() != null;
 }
 
 void main() {
@@ -101,26 +110,30 @@ class ChatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return new MaterialApp(
-        title: "ML Chat",
-        theme: defaultTargetPlatform == TargetPlatform.iOS
-            ? kIOSTheme
-            : kDefaultTheme,
-        home: new ConversationScreen(),
-        routes: <String, WidgetBuilder>{
-          'convos': (BuildContext context) => new ConversationScreen(),
-          'chat': (BuildContext context) => new ChatScreen(),
-        });
+      title: "ML Chat",
+      theme: defaultTargetPlatform == TargetPlatform.iOS
+          ? kIOSTheme
+          : kDefaultTheme,
+      home: new ConversationScreen(),
+    );
   }
 }
 
 class ChatScreen extends StatefulWidget {
+  final Conversation conversation;
+
+  ChatScreen({this.conversation}) : super();
+
   @override
   State createState() => new ChatState();
 }
 
 class ChatState extends State<ChatScreen> {
-  Text input = new Text('');
-  bool _isComposing = false;
+  Input input; //bottom entity including keyboard and field
+
+  ChatState() : super() {
+    input = new Input(chatState: this);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +142,7 @@ class ChatState extends State<ChatScreen> {
         builder: (context, snapshot) {
           return new Scaffold(
               appBar: new AppBar(
-                title: new Text('ML Chat'),
+                title: new Text(widget.conversation.name),
                 elevation: Theme.of(context).platform == TargetPlatform.iOS
                     ? 0.0
                     : 4.0,
@@ -141,7 +154,8 @@ class ChatState extends State<ChatScreen> {
                 snapshot.hasData
                     ? new Flexible(
                         child: new FirebaseAnimatedList(
-                        query: _messagesRef,
+                        query: FirebaseDatabase.instance.reference().child(
+                            'groups/${widget.conversation.groupID}/messages'),
                         sort: (a, b) => b.key.compareTo(a.key),
                         padding: new EdgeInsets.all(8.0),
                         reverse: true,
@@ -153,36 +167,186 @@ class ChatState extends State<ChatScreen> {
                       ))
                     : new Expanded(
                         child: snapshot.hasError
-                            ? new Text('error signing in: ${snapshot.error}')
-                            : new Text('loading messages')),
-                new Divider(height: 1.0),
-                new Container(
-                  decoration:
-                      new BoxDecoration(color: Theme.of(context).cardColor),
-                  child: _buildTextEntry(),
-                ),
-                new Divider(height: 1.0),
-                new DefaultTabController(
-                    length: 2,
-                    child: new Container(
-                        height: 200.0,
-                        decoration: new BoxDecoration(
-                            color: Theme.of(context).cardColor),
-                        child: new Column(
-                          children: <Widget>[
-                            new Expanded(
-                                child: new TabBarView(children: [
-                              _buildMLButton(
-                                  type: 'object',
-                                  platform: Theme.of(context).platform),
-                              _buildMLButton(
-                                  type: 'text',
-                                  platform: Theme.of(context).platform)
-                            ]))
-                          ],
-                        ))),
+                            ? new LoadingScreen(
+                                message: 'error signing in: ${snapshot.error}')
+                            : new LoadingScreen(message: 'loading messages')),
+                input,
               ]));
         });
+  }
+}
+
+class Input extends StatefulWidget {
+  ChatState chatState;
+
+  Input({this.chatState}) : super();
+
+  @override
+  State<StatefulWidget> createState() => new InputState();
+}
+
+enum KeyboardState { chooser, words }
+
+class InputState extends State<Input> {
+  final TextEditingController _textController = new TextEditingController();
+
+  Text inputText = new Text('');
+  bool _isComposing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return new Container(
+        child: new Column(
+      children: <Widget>[
+        new Divider(height: 1.0),
+        new Container(
+          decoration: new BoxDecoration(color: Theme.of(context).cardColor),
+          child: buildEntryRow(context),
+        ),
+        new Divider(height: 1.0),
+        buildKeyboard(context),
+      ],
+    ));
+  }
+
+  Widget buildEntryRow(BuildContext context) {
+    return new IconTheme(
+      data: new IconThemeData(color: Theme.of(context).accentColor),
+      child: new Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: new Row(children: <Widget>[
+          buildTextField(context),
+          new Container(
+              margin: new EdgeInsets.symmetric(horizontal: 4.0),
+              child: Theme.of(context).platform == TargetPlatform.iOS
+                  ? new CupertinoButton(
+                      child: new Text("Send"),
+                      onPressed: _isComposing ? () => _handleSubmitted() : null,
+                    )
+                  : new IconButton(
+                      icon: new Icon(Icons.send),
+                      onPressed: _isComposing ? () => _handleSubmitted() : null,
+                    )),
+        ]),
+      ),
+    );
+  }
+
+  Widget buildTextField(BuildContext context) {
+    if (_currentUser.godModeOn) {
+      return new Flexible(
+          child: new TextField(
+        controller: _textController,
+        onChanged: ((text) {
+          setState(() {
+            _isComposing = text.length > 0;
+          });
+        }),
+        onSubmitted: (text) => _handleSubmitted,
+        decoration: new InputDecoration.collapsed(hintText: "Send a message"),
+      ));
+    }
+
+    return new Expanded(
+      child: _isComposing
+          ? inputText
+          : new Text(
+              'Send a message',
+              style: new TextStyle(color: Colors.grey),
+            ),
+    );
+  }
+
+  void enterText(String text) {
+    setState(() {
+      inputText = new Text('${inputText.data} $text'); //includes a space
+      _isComposing = inputText.data.length > 0;
+    });
+  }
+
+  _handleSubmitted() async {
+    String toSend = getDataToSend();
+    _textController.clear();
+    setState(() {
+      inputText = new Text('');
+      _isComposing = false;
+    });
+    await _checkSignIn();
+    _sendMessage(toSend);
+  }
+
+  void _sendMessage(String messageText) {
+    FirebaseDatabase.instance
+        .reference()
+        .child(
+            'groups/${widget.chatState.widget.conversation.groupID}/messages')
+        .push()
+        .set({
+      'text': messageText,
+      'senderName': _currentUser.name,
+      'senderPhotoUrl': _currentUser.photoUrl,
+      'senderID' : _currentUser.userKey,
+    });
+    _analytics.logEvent(name: 'message_send');
+  }
+
+  String getDataToSend() {
+    if (_currentUser.godModeOn) {
+      return _textController.text;
+    } else {
+      return inputText.data;
+    }
+  }
+
+  // KEYBOARD
+
+  KeyboardState state = KeyboardState.chooser;
+
+  @override
+  Widget buildKeyboard(BuildContext context) {
+    if (!_currentUser.godModeOn) {
+      switch (state) {
+        case KeyboardState.chooser:
+          return new DefaultTabController(
+              length: 2,
+              child: new Container(
+                  height: 200.0,
+                  decoration:
+                      new BoxDecoration(color: Theme.of(context).cardColor),
+                  child: new Column(
+                    children: <Widget>[
+                      new Expanded(
+                          child: new TabBarView(children: [
+                        _buildMLButton(
+                            type: 'object',
+                            platform: Theme.of(context).platform),
+                        _buildMLButton(
+                            type: 'text', platform: Theme.of(context).platform)
+                      ]))
+                    ],
+                  )));
+          break;
+        case KeyboardState.words:
+          return new Container(
+              height: 200.0,
+              child: new Column(
+                children: <Widget>[
+                  new Align(
+                      alignment: Alignment.centerRight,
+                      child: new IconButton(
+                          icon: new Icon(Icons.close),
+                          onPressed: (() {
+                            setState(() {
+                              state = KeyboardState.chooser;
+                            });
+                          }))),
+                  new Expanded(child: new Container())
+                ],
+              ));
+          break;
+      }
+    }
+    return new Container();
   }
 
   Widget _buildMLButton({type, platform}) {
@@ -200,67 +364,16 @@ class ChatState extends State<ChatScreen> {
       ],
     ));
     var onPress = (() {
-      setState(() {
-        input = new Text('${input.data}\$');
-        _isComposing = true; // TODO: remove this default behaviour
-      });
       _analytics.logEvent(name: 'placeholder_button_push');
+      setState(() {
+        enterText('\$');
+        state = KeyboardState.words;
+      });
     });
 
     return platform == TargetPlatform.iOS
         ? new CupertinoButton(child: buttonBody, onPressed: onPress)
         : new RaisedButton(child: buttonBody, onPressed: onPress);
-  }
-
-  Widget _buildTextEntry() {
-    return new IconTheme(
-      data: new IconThemeData(color: Theme.of(context).accentColor),
-      child: new Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8.0),
-          child: new Row(children: <Widget>[
-            new Expanded(
-              child: input,
-            ),
-            new Container(
-                margin: new EdgeInsets.symmetric(horizontal: 4.0),
-                child: Theme.of(context).platform == TargetPlatform.iOS
-                    ? new CupertinoButton(
-                        child: new Text("Send"),
-                        onPressed: _isComposing
-                            ? () => _handleSubmitted(input.data)
-                            : null,
-                      )
-                    : new IconButton(
-                        icon: new Icon(Icons.send),
-                        onPressed: _isComposing
-                            ? () => _handleSubmitted(input.data)
-                            : null,
-                      )),
-          ]),
-          decoration: Theme.of(context).platform == TargetPlatform.iOS
-              ? new BoxDecoration(
-                  border:
-                      new Border(top: new BorderSide(color: Colors.grey[200])))
-              : null),
-    );
-  }
-
-  void _handleSubmitted(String messageText) async {
-    setState(() {
-      input = new Text('');
-      _isComposing = false;
-    });
-    await _checkSignIn();
-    _sendMessage(messageText);
-  }
-
-  void _sendMessage(String messageText) {
-    _messagesRef.push().set({
-      'text': messageText,
-      'senderName': _currentUser.name,
-      'senderPhotoUrl': _currentUser.photoUrl,
-    });
-    _analytics.logEvent(name: 'message_send');
   }
 }
 
@@ -294,20 +407,19 @@ class Message extends StatelessWidget {
                           ? new Text((snapshot.value['senderName'])[0])
                           : null,
                     ),
-                    decoration: new BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: new Border.all(color: Colors.grey),
-                    ),
                   ),
                   new Expanded(
                     child: new Container(
                         decoration: new BoxDecoration(
                             color: _sentByThis()
                                 ? Theme.of(context).primaryColor
-                                : Theme.of(context).accentColor,
-                            borderRadius: new BorderRadius.circular(10.0)),
+                                : Theme.of(context).platform ==
+                                        TargetPlatform.iOS
+                                    ? Theme.of(context).accentColor
+                                    : Colors.grey[100],
+                            borderRadius: new BorderRadius.circular(14.0)),
                         child: new Padding(
-                            padding: new EdgeInsets.all(5.0),
+                            padding: new EdgeInsets.all(8.0),
                             child: new Column(
                               crossAxisAlignment: _sentByThis()
                                   ? CrossAxisAlignment.start
@@ -327,7 +439,7 @@ class Message extends StatelessWidget {
 
   bool _sentByThis() {
     if (_currentUser == null) return false;
-    return snapshot.value['senderName'] == _currentUser.name;
+    return snapshot.value['senderID'] == _currentUser.userKey;
   }
 
   TextStyle _getMessageStyle(BuildContext context) {
@@ -344,8 +456,18 @@ class Message extends StatelessWidget {
 
 class User {
   final String name, email, photoUrl, userKey;
+  final bool godMode;
+  bool godModeOn;
 
-  User({this.name, this.email, this.photoUrl, this.userKey});
+  User({this.name, this.email, this.photoUrl, this.userKey, this.godMode}) {
+    godModeOn = godMode;
+  }
+
+  toggleGodMode() {
+    if (godMode) {
+      godModeOn = !godModeOn;
+    }
+  }
 }
 
 class ConversationScreen extends StatefulWidget {
@@ -359,6 +481,17 @@ class ConversationsState extends State<ConversationScreen> {
     return new Scaffold(
       appBar: new AppBar(
         title: new Text('ML Chat'),
+        actions: <Widget>[
+          new IconButton(
+            icon: new Icon(Icons.settings),
+            tooltip: 'toggle God mode',
+            onPressed: (() {
+              Navigator.of(context).push(new MaterialPageRoute(
+                    builder: (context) => new SettingsScreen(),
+                  ));
+            }),
+          )
+        ],
       ),
       body: new FutureBuilder(
           future: _checkSignIn(),
@@ -374,21 +507,22 @@ class ConversationsState extends State<ConversationScreen> {
                                 return snapshot.data[index];
                               })
                           : snapshot.hasError
-                              ? new Text(
-                                  'error loading conversations: ${snapshot.error}')
-                              : new Text('loading conversations');
+                              ? new LoadingScreen(
+                                  message:
+                                      'error loading conversations: ${snapshot.error}')
+                              : new LoadingScreen(
+                                  message: 'loading conversations');
                     })
                 : snapshot.hasError
-                    ? new Text('error signing in: ${snapshot.error}')
-                    : new Text('authenticating');
+                    ? new LoadingScreen(
+                        message: 'error signing in: ${snapshot.error}')
+                    : new LoadingScreen(message: 'logging in');
           }),
     );
   }
 }
 
 Future<List<Conversation>> getGroups() async {
-  print('getting groups');
-
   List<Conversation> conversations = new List();
 
   DataSnapshot snapshot =
@@ -426,6 +560,7 @@ Future<List<Conversation>> getGroups() async {
 
       conversations.add(new Conversation(
         name: group['name'],
+        groupID: key,
         members: groupMembers,
       ));
     }
@@ -436,9 +571,10 @@ Future<List<Conversation>> getGroups() async {
 
 class Conversation extends StatelessWidget {
   String name;
-  List<User> members;
+  String groupID;
+  List<User> members; //note: these user objects may not have all data
 
-  Conversation({this.name, this.members});
+  Conversation({this.name, this.groupID, this.members});
 
   @override
   Widget build(BuildContext context) {
@@ -446,6 +582,11 @@ class Conversation extends StatelessWidget {
       leading: new Icon(Icons.perm_identity),
       title: new Text(name),
       subtitle: new Text(_buildMemberShortList()),
+      onTap: (() {
+        Navigator.of(context).push(new MaterialPageRoute(builder: (context) {
+          return new ChatScreen(conversation: this);
+        }));
+      }),
     );
   }
 
@@ -456,5 +597,57 @@ class Conversation extends StatelessWidget {
     } else {
       return '';
     }
+  }
+}
+
+class LoadingScreen extends StatelessWidget {
+  String message;
+
+  LoadingScreen({this.message = 'Loading...'}) : super();
+
+  @override
+  Widget build(BuildContext context) {
+    return new Center(child: new Text(message));
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  @override
+  State<StatefulWidget> createState() => new SettingsState();
+}
+
+class SettingsState extends State<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return new Scaffold(
+        appBar: new AppBar(
+          title: const Text('Settings'),
+        ),
+        body: new Center(
+            child: new Column(
+          children: <Widget>[
+            new FutureBuilder(
+                future: _checkSignIn(),
+                builder: (context, snapshot) {
+                  return snapshot.hasData
+                      ? _currentUser.godMode
+                          ? new Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                new Checkbox(
+                                    value: _currentUser.godModeOn,
+                                    onChanged: ((val) {
+                                      setState(() {
+                                        _currentUser.toggleGodMode();
+                                      });
+                                    })),
+                                new Text('godMode'),
+                              ],
+                            )
+                          : new Container()
+                      : new Container();
+                })
+          ],
+        )));
   }
 }
