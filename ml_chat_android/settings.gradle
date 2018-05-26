@@ -1,0 +1,2 @@
+include ':app', ':ml_chat'
+project(':ml_chat').projectDir = new File(settingsDir, '../ml_chat/android/app')
