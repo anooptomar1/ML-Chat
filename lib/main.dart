@@ -9,6 +9,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_database/ui/firebase_animated_list.dart';
+import 'package:mlkit/mlkit.dart';
+import 'package:camera/camera.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 final ThemeData kIOSTheme = new ThemeData(
   primarySwatch: Colors.lightBlue,
@@ -20,6 +24,8 @@ final ThemeData kDefaultTheme = new ThemeData(
   primarySwatch: Colors.lightBlue,
   accentColor: Colors.greenAccent[400],
 );
+
+List<CameraDescription> cameras;
 
 final _googleSignIn = new GoogleSignIn();
 final _auth = FirebaseAuth.instance;
@@ -102,7 +108,8 @@ Future<bool> _checkSignIn() async {
   return _auth.currentUser() != null;
 }
 
-void main() {
+Future<Null> main() async {
+  cameras = await availableCameras();
   runApp(new ChatApp());
 }
 
@@ -185,10 +192,11 @@ class Input extends StatefulWidget {
   State<StatefulWidget> createState() => new InputState();
 }
 
-enum KeyboardState { chooser, words }
+enum KeyboardState { chooser, words}
 
 class InputState extends State<Input> {
   final TextEditingController _textController = new TextEditingController();
+  List<String> words;
 
   Text inputText = new Text('');
   bool _isComposing = false;
@@ -285,7 +293,7 @@ class InputState extends State<Input> {
       'text': messageText,
       'senderName': _currentUser.name,
       'senderPhotoUrl': _currentUser.photoUrl,
-      'senderID' : _currentUser.userKey,
+      'senderID': _currentUser.userKey,
     });
     _analytics.logEvent(name: 'message_send');
   }
@@ -318,10 +326,10 @@ class InputState extends State<Input> {
                       new Expanded(
                           child: new TabBarView(children: [
                         _buildMLButton(
-                            type: 'object',
+                            type: visionProcessMode.object,
                             platform: Theme.of(context).platform),
                         _buildMLButton(
-                            type: 'text', platform: Theme.of(context).platform)
+                            type: visionProcessMode.text, platform: Theme.of(context).platform)
                       ]))
                     ],
                   )));
@@ -340,7 +348,8 @@ class InputState extends State<Input> {
                               state = KeyboardState.chooser;
                             });
                           }))),
-                  new Expanded(child: new Container())
+                  new Expanded(child: (words != null) ?
+                  new Text(words.toString()) : new Container())
                 ],
               ));
           break;
@@ -351,8 +360,8 @@ class InputState extends State<Input> {
 
   Widget _buildMLButton({type, platform}) {
     Icon icon =
-        type == 'object' ? new Icon(Icons.image) : new Icon(Icons.title);
-    Text label = type == 'object'
+        type == visionProcessMode.object ? new Icon(Icons.image) : new Icon(Icons.title);
+    Text label = type == visionProcessMode.object
         ? new Text('Find an Object')
         : new Text('Find Some Text');
     Widget buttonBody = new Center(
@@ -364,11 +373,17 @@ class InputState extends State<Input> {
       ],
     ));
     var onPress = (() {
-      _analytics.logEvent(name: 'placeholder_button_push');
-      setState(() {
-        enterText('\$');
-        state = KeyboardState.words;
-      });
+
+      _analytics.logEvent(name: 'ml_getter_button_push');
+
+      mode = type; //mode setter
+
+      showDialog(context: context,
+          builder: ((context) => new VisionView())).then((wordsData) { setState(() {
+            words = wordsData;
+            state = KeyboardState.words;
+          });});
+
     });
 
     return platform == TargetPlatform.iOS
@@ -649,5 +664,98 @@ class SettingsState extends State<SettingsScreen> {
                 })
           ],
         )));
+  }
+}
+
+// Vision Processing Mode: set by Virutal Keyboard. Used by ml_kit processor
+enum visionProcessMode {object, text}
+visionProcessMode mode;
+
+final FirebaseVisionTextDetector _detector =
+    FirebaseVisionTextDetector.instance;
+
+class VisionView extends StatefulWidget {
+  @override
+  State<StatefulWidget> createState() => new VisionViewState();
+}
+
+class VisionViewState extends State<VisionView> {
+  CameraController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = new CameraController(cameras[0], ResolutionPreset.medium);
+    controller.initialize().then((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!controller.value.isInitialized) {
+      return new Container();
+    }
+
+    return new GestureDetector(
+        child: new AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: new CameraPreview(controller)),
+        onTap: (() {
+          takePicture().then((String filePath) {
+            if (mounted && (filePath != null)) print('Picture saved to $filePath');
+            Navigator.pop(context,processWords(filePath));
+          });
+        }));
+  }
+
+  // Code taken from camera example on pub
+  Future<String> takePicture() async {
+    if (!controller.value.isInitialized) {
+      return null;
+    }
+    final Directory extDir = await getApplicationDocumentsDirectory();
+    final String dirPath = '${extDir.path}/Pictures/flutter_test';
+    await new Directory(dirPath).create(recursive: true);
+    final String filePath = '$dirPath/${timestamp()}.jpg';
+
+    if (controller.value.isTakingPicture) {
+      return null;
+    }
+
+    try {
+      await controller.takePicture(filePath);
+    } on CameraException catch (e) {
+      return null;
+    }
+    return filePath;
+  }
+
+  String timestamp() => new DateTime.now().millisecondsSinceEpoch.toString();
+
+  List<String> processWords(String imagePath) {
+    // TODO: implement image processing
+    switch (mode) {
+      case visionProcessMode.object:
+        var sampleList = new List<String>();
+        sampleList.add('a word from an object');
+        return sampleList;
+        break;
+      case visionProcessMode.text:
+        var sampleList = new List<String>();
+        sampleList.add('a word from text');
+        sampleList.add('another word from text');
+        return sampleList;
+        break;
+    }
   }
 }
