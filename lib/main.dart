@@ -390,6 +390,12 @@ class InputState extends State<Input> {
         ? new CupertinoButton(child: buttonBody, onPressed: onPress)
         : new RaisedButton(child: buttonBody, onPressed: onPress);
   }
+
+  @override
+  void dispose() {
+    controller?.dispose();
+    super.dispose();
+  }
 }
 
 class Message extends StatelessWidget {
@@ -671,8 +677,13 @@ class SettingsState extends State<SettingsScreen> {
 enum visionProcessMode {object, text}
 visionProcessMode mode;
 
-final FirebaseVisionTextDetector _detector =
+CameraController controller;
+
+final FirebaseVisionTextDetector _textDetector =
     FirebaseVisionTextDetector.instance;
+
+final FirebaseVisionLabelDetector _objectDetector =
+    FirebaseVisionLabelDetector.instance;
 
 class VisionView extends StatefulWidget {
   @override
@@ -680,7 +691,6 @@ class VisionView extends StatefulWidget {
 }
 
 class VisionViewState extends State<VisionView> {
-  CameraController controller;
 
   @override
   void initState() {
@@ -695,25 +705,22 @@ class VisionViewState extends State<VisionView> {
   }
 
   @override
-  void dispose() {
-    controller?.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (!controller.value.isInitialized) {
       return new Container();
     }
 
     return new GestureDetector(
+        // TODO: make the preview not stretched
         child: new AspectRatio(
             aspectRatio: controller.value.aspectRatio,
             child: new CameraPreview(controller)),
         onTap: (() {
           takePicture().then((String filePath) {
             if (mounted && (filePath != null)) print('Picture saved to $filePath');
-            Navigator.pop(context,processWords(filePath));
+            processWords(filePath).then((wordsList) {
+              Navigator.pop(context,wordsList);
+            });
           });
         }));
   }
@@ -742,20 +749,24 @@ class VisionViewState extends State<VisionView> {
 
   String timestamp() => new DateTime.now().millisecondsSinceEpoch.toString();
 
-  List<String> processWords(String imagePath) {
-    // TODO: implement image processing
+  Future<List<String>> processWords(String imagePath) async {
+    var wordList = new List<String>();
     switch (mode) {
       case visionProcessMode.object:
-        var sampleList = new List<String>();
-        sampleList.add('a word from an object');
-        return sampleList;
+        var labels = await _objectDetector.detectFromPath(imagePath);
+        for (VisionLabel label in labels)
+          wordList.add(label.label);
         break;
       case visionProcessMode.text:
-        var sampleList = new List<String>();
-        sampleList.add('a word from text');
-        sampleList.add('another word from text');
-        return sampleList;
+        // TODO: figure out why text doesn't work
+        var texts = await _textDetector.detectFromPath(imagePath);
+        if (texts != null) {
+          for (VisionText text in texts)
+            wordList.add(text.text);
+        }
         break;
     }
+    return wordList;
   }
+
 }
